@@ -11,7 +11,7 @@ import {
   lazyInject,
   TYPES,
 } from '@antv/l7-core';
-import { extent } from '@antv/l7-utils';
+import { bBoxToBounds, extent, padBounds } from '@antv/l7-utils';
 import {
   BBox,
   Feature,
@@ -56,24 +56,9 @@ export default class Source extends EventEmitter {
 
   constructor(data: any, cfg?: ISourceCFG) {
     super();
-    this.rawData = cloneDeep(data);
+    // this.rawData = cloneDeep(data);
     this.originData = data;
-    if (cfg) {
-      if (cfg.parser) {
-        this.parser = cfg.parser;
-      }
-      if (cfg.transforms) {
-        this.transforms = cfg.transforms;
-      }
-      this.cluster = cfg.cluster || false;
-      if (cfg.clusterOptions) {
-        this.cluster = true;
-        this.clusterOptions = {
-          ...this.clusterOptions,
-          ...cfg.clusterOptions,
-        };
-      }
-    }
+    this.initCfg(cfg);
 
     this.hooks.init.tap('parser', () => {
       this.excuteParser();
@@ -87,9 +72,10 @@ export default class Source extends EventEmitter {
     this.init();
   }
 
-  public setData(data: any) {
+  public setData(data: any, options?: ISourceCFG) {
     this.rawData = data;
-    this.originData = cloneDeep(data);
+    this.originData = data;
+    this.initCfg(options);
     this.init();
     this.emit('update');
   }
@@ -101,7 +87,11 @@ export default class Source extends EventEmitter {
   }
   public updateClusterData(zoom: number): void {
     const { method = 'sum', field } = this.clusterOptions;
-    let data = this.clusterIndex.getClusters(this.extent, Math.floor(zoom));
+    const newBounds = padBounds(bBoxToBounds(this.extent), 2);
+    let data = this.clusterIndex.getClusters(
+      newBounds[0].concat(newBounds[1]),
+      Math.floor(zoom),
+    );
     this.clusterOptions.zoom = zoom;
     data.forEach((p: any) => {
       if (!p.id) {
@@ -137,11 +127,19 @@ export default class Source extends EventEmitter {
   }
   public getFeatureById(id: number): unknown {
     const { type = 'geojson' } = this.parser;
-    if (type === 'geojson' && !this.cluster && this.transforms.length === 0) {
-      //  TODO： 聚合图层返回聚合和后的数据
-      return id < this.originData.features.length
-        ? this.originData.features[id]
-        : 'null';
+    if (type === 'geojson' && !this.cluster) {
+      const feature =
+        id < this.originData.features.length
+          ? this.originData.features[id]
+          : 'null';
+      const newFeature = cloneDeep(feature);
+      if (this.transforms.length !== 0) {
+        const item = this.data.dataArray.find((dataItem: IParseDataItem) => {
+          return dataItem._id === id;
+        });
+        newFeature.properties = item;
+      }
+      return newFeature;
     } else {
       return id < this.data.dataArray.length ? this.data.dataArray[id] : 'null';
     }
@@ -154,6 +152,32 @@ export default class Source extends EventEmitter {
     return feature?._id;
   }
 
+  public destroy() {
+    this.removeAllListeners();
+    this.originData = null;
+    this.clusterIndex = null;
+    // @ts-ignore
+    this.data = null;
+  }
+
+  private initCfg(cfg?: ISourceCFG) {
+    if (cfg) {
+      if (cfg.parser) {
+        this.parser = cfg.parser;
+      }
+      if (cfg.transforms) {
+        this.transforms = cfg.transforms;
+      }
+      this.cluster = cfg.cluster || false;
+      if (cfg.clusterOptions) {
+        this.cluster = true;
+        this.clusterOptions = {
+          ...this.clusterOptions,
+          ...cfg.clusterOptions,
+        };
+      }
+    }
+  }
   private excuteParser(): void {
     const parser = this.parser;
     const type: string = parser.type || 'geojson';
@@ -181,12 +205,6 @@ export default class Source extends EventEmitter {
 
     const clusterOptions = this.clusterOptions || {};
     this.clusterIndex = cluster(this.data, clusterOptions);
-    // this.clusterIndex = new Supercluster({
-    //   radius,
-    //   minZoom,
-    //   maxZoom,
-    // });
-    // this.clusterIndex.load(this.rawData.features);
   }
 
   private init() {

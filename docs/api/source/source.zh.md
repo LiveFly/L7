@@ -3,6 +3,8 @@ title: Source
 order: 0
 ---
 
+`markdown:docs/common/style.md`
+
 ## 概述
 
 source 地理数据处理模块，主要包含数据解析（parser)，和数据处理(transform);
@@ -65,20 +67,21 @@ layer.source(data);
 ```javascript
 layer.setData(data);
 ```
+
 ### 方法
 
 #### getClustersLeaves(cluster_id)
+
 聚合图使用，获取聚合节点的原始数据
 
-参数： 
- id 聚合节点的 cluster_id
+参数：
+id 聚合节点的 cluster_id
 
 ```javascript
- layer.on('click', (e) => {
-     console.log(source.getClustersLeaves(e.feature.cluster_id));
-  });
+layer.on('click', (e) => {
+  console.log(source.getClustersLeaves(e.feature.cluster_id));
+});
 ```
-
 
 ### 方法
 

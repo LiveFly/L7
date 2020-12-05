@@ -1,5 +1,5 @@
 import { LineLayer, PolygonLayer, Scene } from '@antv/l7';
-import { GaodeMap } from '@antv/l7-maps';
+import { GaodeMap, Mapbox } from '@antv/l7-maps';
 import * as React from 'react';
 
 function convertRGB2Hex(rgb: number[]) {
@@ -27,22 +27,24 @@ export default class MultiPolygon extends React.Component {
       map: new GaodeMap({
         pitch: 0,
         style: 'dark',
-        center: [121.775374, 31.31067],
-        zoom: 5,
+        center: [118.70796203613281, 31.84956532831343],
+        zoom: 12,
       }),
     });
     const data = await response.json();
     // console.log(data.features[5]);
     // data.features = data.features.slice(6);
-    const layer = new LineLayer()
+    const layer = new PolygonLayer({
+      autoFit: true,
+    })
       .source(data)
-      .shape('line')
-      .size(1)
+      .shape('fill')
       .color('red')
       .style({
         opacity: 1.0,
       });
     scene.addLayer(layer);
+    console.log(layer);
   }
 
   public render() {

@@ -13,6 +13,7 @@ import HeatMapDemo from './components/HeatMap';
 import HeatMap3D_2 from './components/heatmap2';
 import HeatMapDemo3D from './components/heatmap3d';
 import HexagonLayerDemo from './components/hexagon';
+import HighLight from './components/highlight';
 import LineLayer from './components/Line';
 import LineAnimate from './components/lineAnimate';
 import PointDemo from './components/Point';
@@ -47,7 +48,9 @@ storiesOf('图层', module)
   .add('热力图3D', () => <HeatMapDemo3D />)
   .add('热力图2', () => <HeatMap3D_2 />)
   .add('网格热力图', () => <HexagonLayerDemo />)
+  .add('网格热力图2', () => <GridTest />)
   .add('栅格', () => <RasterLayerDemo />)
   .add('图片', () => <ImageLayerDemo />)
   .add('网格测试', () => <GridTest />)
+  .add('图层高亮', () => <HighLight />)
   .add('世界地图', () => <WorldDemo />);

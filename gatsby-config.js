@@ -12,6 +12,8 @@ module.exports = {
     description: 'Large-scale WebGL-powered Geospatial data visualization analysis framework',
     siteUrl: 'https://l7.antv.vision',
     githubUrl: 'https://github.com/antvis/L7',
+    showChartResize: true, // 是否在demo页展示图表视图切换
+    showAPIDoc: true, // 是否在demo页展示API文档
     navs: [
       {
         slug: 'docs/api',
@@ -76,6 +78,14 @@ module.exports = {
           en: 'Scene'
         },
         order: 1
+      },
+      {
+        slug: 'api/district',
+        title: {
+          zh: '行政区划',
+          en: 'District'
+        },
+        order: 2
       },
       {
         slug: 'api/draw',
@@ -192,10 +202,18 @@ module.exports = {
         }
       },
       {
+        slug: 'district',
+        icon: 'map',
+        title: {
+          zh: '行政区划',
+          en: 'L7 District'
+        }
+      },
+      {
         slug: 'draw',
         icon: 'map',
         title: {
-          zh: '绘制 组件',
+          zh: '绘制组件',
           en: 'L7 Draw'
         }
       },
@@ -250,7 +268,7 @@ module.exports = {
       }
     ],
     playground: {
-      container: '<div style="min-height: 500px; justify-content: center;position: relative" id="map"/>',
+      container: '<div style="min-height: 500px; justify-content: center; position: relative" id="map"/>',
       dependencies: {
         '@antv/l7': 'latest',
         '@antv/l7-maps': 'latest'

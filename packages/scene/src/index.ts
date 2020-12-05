@@ -191,7 +191,7 @@ class Scene
   }
 
   public hasImage(id: string) {
-    this.iconService.hasImage(id);
+    return this.iconService.hasImage(id);
   }
 
   public removeImage(id: string) {
@@ -294,7 +294,7 @@ class Scene
   }
 
   public panBy(pixel: Point): void {
-    this.mapService.panTo(pixel);
+    this.mapService.panBy(pixel);
   }
 
   public getContainer() {

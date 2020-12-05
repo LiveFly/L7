@@ -34,6 +34,7 @@ export enum BlendType {
   subtractive = 'subtractive',
   min = 'min',
   max = 'max',
+  none = 'none',
 }
 export interface IBlendTypes {
   [key: string]: Partial<IBlendOptions>;
@@ -57,7 +58,9 @@ export interface ILayerModel {
   getDefaultStyle(): unknown;
   getAnimateUniforms(): IModelUniform;
   buildModels(): IModel[];
+  initModels(): IModel[];
   needUpdate(): boolean;
+  clearModels(): void;
 }
 export interface IModelUniform {
   [key: string]: IUniform;
@@ -82,6 +85,7 @@ export interface ILayer {
   zIndex: number;
   plugins: ILayerPlugin[];
   layerModelNeedUpdate: boolean;
+  styleNeedUpdate: boolean;
   layerModel: ILayerModel;
   dataState: IDataState; // 数据流状态
   pickedFeatureID: number | null;
@@ -117,6 +121,7 @@ export interface ILayer {
   prepareBuildModel(): void;
   renderModels(): void;
   buildModels(): void;
+  rebuildModels(): void;
   buildLayerModel(
     options: ILayerModelInitializationOptions &
       Partial<IModelInitializationOptions>,
@@ -154,6 +159,8 @@ export interface ILayer {
   setBlend(type: keyof typeof BlendType): void;
   // animate(field: string, option: any): ILayer;
   render(): ILayer;
+  clear(): void;
+  clearModels(): void;
   destroy(): void;
   source(data: any, option?: ISourceCFG): ILayer;
   setData(data: any, option?: ISourceCFG): ILayer;

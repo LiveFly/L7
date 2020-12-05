@@ -2,6 +2,8 @@
 title: PolygonLayer
 order: 0
 ---
+`markdown:docs/common/style.md`
+
 绘制 2D 多边形以及沿 Z 轴拉伸后的 3D 图形。
 
 ## 使用
@@ -19,11 +21,9 @@ import { PolygonLayer } from '@antv/l7';
 - extrude 对填充图 3D 拉伸 不支持数据映射
 
 ```javascript
-
 PolyonLayer.shape('fill');
 PolyonLayer.shape('line').size(1); // size 表示线宽度
 PolyonLayer.shape('extrude').size(10); // size 表示高度
-
 ```
 
-其他方法，事件，同基类 [Layer](/zh/docs/api/layer/layer)
+`markdown:docs/common/layer/base.md`

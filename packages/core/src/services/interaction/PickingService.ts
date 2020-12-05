@@ -46,8 +46,14 @@ export default class PickingService implements IPickingService {
       createTexture2D,
       createFramebuffer,
       getViewportSize,
+      getContainer,
     } = this.rendererService;
-    const { width, height } = getViewportSize();
+    let {
+      width,
+      height,
+    } = (getContainer() as HTMLElement).getBoundingClientRect();
+    width *= window.devicePixelRatio;
+    height *= window.devicePixelRatio;
     this.pickBufferScale =
       this.configService.getSceneConfig(id).pickBufferScale || 1;
     // 创建 picking framebuffer，后续实时 resize
@@ -76,9 +82,18 @@ export default class PickingService implements IPickingService {
     this.alreadyInPicking = false;
   }
   private async pickingLayers(target: IInteractionTarget) {
-    const { getViewportSize, useFramebuffer, clear } = this.rendererService;
-    const { width, height } = getViewportSize();
-
+    const {
+      getViewportSize,
+      useFramebuffer,
+      clear,
+      getContainer,
+    } = this.rendererService;
+    let {
+      width,
+      height,
+    } = (getContainer() as HTMLElement).getBoundingClientRect();
+    width *= window.devicePixelRatio;
+    height *= window.devicePixelRatio;
     if (this.width !== width || this.height !== height) {
       this.pickingFBO.resize({
         width: Math.round(width / this.pickBufferScale),
@@ -110,11 +125,16 @@ export default class PickingService implements IPickingService {
   }
   private pickFromPickingFBO = (
     layer: ILayer,
-    { x, y, lngLat, type }: IInteractionTarget,
+    { x, y, lngLat, type, target }: IInteractionTarget,
   ) => {
     let isPicked = false;
-    const { getViewportSize, readPixels } = this.rendererService;
-    const { width, height } = getViewportSize();
+    const { getViewportSize, readPixels, getContainer } = this.rendererService;
+    let {
+      width,
+      height,
+    } = (getContainer() as HTMLElement).getBoundingClientRect();
+    width *= window.devicePixelRatio;
+    height *= window.devicePixelRatio;
     const { enableHighlight, enableSelect } = layer.getLayerConfig();
 
     const xInDevicePixel = x * window.devicePixelRatio;
@@ -153,13 +173,14 @@ export default class PickingService implements IPickingService {
         type = 'mouseenter';
       }
 
-      const target = {
+      const layerTarget = {
         x,
         y,
         type,
         lngLat,
         featureId: pickedFeatureIdx,
         feature: rawFeature,
+        target,
       };
       if (!rawFeature) {
         // this.logger.error(
@@ -169,11 +190,11 @@ export default class PickingService implements IPickingService {
         // trigger onHover/Click callback on layer
         isPicked = true;
         layer.setCurrentPickId(pickedFeatureIdx);
-        this.triggerHoverOnLayer(layer, target); // 触发拾取事件
+        this.triggerHoverOnLayer(layer, layerTarget); // 触发拾取事件
       }
     } else {
       // 未选中
-      const target = {
+      const layerTarget = {
         x,
         y,
         lngLat,
@@ -182,13 +203,14 @@ export default class PickingService implements IPickingService {
             ? 'mouseout'
             : 'un' + type,
         featureId: null,
+        target,
         feature: null,
       };
       this.triggerHoverOnLayer(layer, {
-        ...target,
+        ...layerTarget,
         type: 'unpick',
       });
-      this.triggerHoverOnLayer(layer, target);
+      this.triggerHoverOnLayer(layer, layerTarget);
       layer.setCurrentPickId(null);
     }
 

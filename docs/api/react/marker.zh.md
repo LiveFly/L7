@@ -3,6 +3,8 @@ title: Marker 组件
 order: 3
 ---
 
+`markdown:docs/common/style.md`
+
 ## Marker Props
 
 | prop name      | Type              | Default | Description       |
@@ -30,10 +32,7 @@ order: 3
 ```jsx
 import { Marker} from '@antv/l7-react'
 <Marker
- option = {{
-   color:'red'
- }}
- lnglat ={{[120,32]}}
+ lnglat={[120,32]}
 />
 
 ```

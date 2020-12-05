@@ -3,6 +3,8 @@ title: 地图 Map
 order: 2
 ---
 
+`markdown:docs/common/style.md`
+
 # 简介
 
 L7 专注数据可视化层数据表达，目前 L7 还不支持独立的地图引擎，需要引入第三方引擎，目前支持高德地图和 MapBox 两种。
@@ -12,11 +14,10 @@ L7 在内部解决了不同地图底图之间差异，同时 L7 层面统一管�
 
 ### 引入 Map
 
-```javascropt
+```javascript
+import { GaodeMap } from '@antv/l7-maps';
 
-   import { GaodeMap } from '@antv/l7-maps';
-
-   import { Mapbox } from '@antv/l7-maps';
+import { Mapbox } from '@antv/l7-maps';
 ```
 
 ### 实例化

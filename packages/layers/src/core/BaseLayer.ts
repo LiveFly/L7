@@ -70,6 +70,7 @@ export default class BaseLayer<ChildLayerStyleOptions = {}> extends EventEmitter
   public layerModelNeedUpdate: boolean = false;
   public pickedFeatureID: number | null = null;
   public selectedFeatureID: number | null = null;
+  public styleNeedUpdate: boolean = false;
 
   public dataState: IDataState = {
     dataSourceNeedUpdate: false,
@@ -367,6 +368,14 @@ export default class BaseLayer<ChildLayerStyleOptions = {}> extends EventEmitter
     return this;
   }
 
+  public rotate(
+    field: StyleAttributeField,
+    values?: StyleAttributeOption,
+    updateOptions?: Partial<IStyleAttributeUpdateOptions>,
+  ) {
+    this.updateStyleAttribute('rotate', field, values, updateOptions);
+    return this;
+  }
   public size(
     field: StyleAttributeField,
     values?: StyleAttributeOption,
@@ -434,10 +443,10 @@ export default class BaseLayer<ChildLayerStyleOptions = {}> extends EventEmitter
 
   public setData(data: any, options?: ISourceCFG) {
     if (this.inited) {
-      this.layerSource.setData(data);
+      this.layerSource.setData(data, options);
     } else {
       this.on('inited', () => {
-        this.layerSource.setData(data);
+        this.layerSource.setData(data, options);
       });
     }
 
@@ -469,6 +478,7 @@ export default class BaseLayer<ChildLayerStyleOptions = {}> extends EventEmitter
 
     if (this.container) {
       this.updateLayerConfig(this.rawConfig);
+      this.styleNeedUpdate = true;
     }
     return this;
   }
@@ -495,7 +505,6 @@ export default class BaseLayer<ChildLayerStyleOptions = {}> extends EventEmitter
     // } else {
     //   this.renderModels();
     // }
-
     this.renderModels();
     // this.multiPassRenderer.render();
     // this.renderModels();
@@ -684,6 +693,10 @@ export default class BaseLayer<ChildLayerStyleOptions = {}> extends EventEmitter
     }
     const source = this.getSource();
     const extent = source.extent;
+    const isValid = extent.some((v) => Math.abs(v) === Infinity);
+    if (isValid) {
+      return this;
+    }
     this.mapService.fitBounds(
       [
         [extent[0], extent[1]],
@@ -704,7 +717,7 @@ export default class BaseLayer<ChildLayerStyleOptions = {}> extends EventEmitter
     // 清除所有属性以及关联的 vao
     this.styleAttributeService.clearAllAttributes();
     // 销毁所有 model
-    this.models.forEach((model) => model.destroy());
+    // this.models.forEach((model) => model.destroy());
 
     this.hooks.afterDestroy.call();
 
@@ -721,7 +734,10 @@ export default class BaseLayer<ChildLayerStyleOptions = {}> extends EventEmitter
   public clear() {
     this.styleAttributeService.clearAllAttributes();
     // 销毁所有 model
+  }
+  public clearModels() {
     this.models.forEach((model) => model.destroy());
+    this.layerModel.clearModels();
   }
 
   public isDirty() {
@@ -880,6 +896,9 @@ export default class BaseLayer<ChildLayerStyleOptions = {}> extends EventEmitter
   }
 
   public buildModels() {
+    throw new Error('Method not implemented.');
+  }
+  public rebuildModels() {
     throw new Error('Method not implemented.');
   }
 

@@ -29,6 +29,10 @@ export default class FillModel extends BaseModel {
     };
   }
 
+  public initModels(): IModel[] {
+    return this.buildModels();
+  }
+
   public buildModels(): IModel[] {
     return [
       this.layer.buildLayerModel({
@@ -36,6 +40,7 @@ export default class FillModel extends BaseModel {
         vertexShader: polygon_vert,
         fragmentShader: polygon_frag,
         triangulation: polygonTriangulation,
+        blend: this.getBlend(),
         depth: { enable: false },
       }),
     ];

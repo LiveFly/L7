@@ -28,7 +28,7 @@ module.exports = api => {
           {
             extensions: [
               // 由于使用了 TS 的 resolveJsonModule 选项，JSON 可以直接引入，不需要当作纯文本
-              // '.json',
+              '.pbf',
               '.glsl'
             ]
           }
@@ -40,11 +40,11 @@ module.exports = api => {
   return {
     presets: [
       [
-        '@babel/env',
+        '@babel/preset-env',
         {
           // https://babeljs.io/docs/en/babel-preset-env#usebuiltins
           // useBuiltIns: 'usage',
-          ...isCDNBundle ? { corejs: '3.0.0' } : {},
+          ...isCDNBundle ? { corejs: 3 } : {},
           useBuiltIns: isCDNBundle ? 'usage' : false,
           // set `modules: false` when building CDN bundle, let rollup do commonjs works
           // @see https://github.com/rollup/rollup-plugin-babel#modules
