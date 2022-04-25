@@ -14,12 +14,12 @@ export default class Point3D extends React.Component {
   public async componentDidMount() {
     const scene = new Scene({
       id: 'map',
-      pickBufferScale: 3.0,
+      pickBufferScale: 1.0,
       map: new GaodeMap({
         style: 'light',
         center: [-121.24357, 37.58264],
         pitch: 0,
-        zoom: 10.45,
+        zoom: 6.45,
       }),
     });
     scene.on('loaded', () => {
@@ -29,7 +29,7 @@ export default class Point3D extends React.Component {
         .then((res) => res.text())
         .then((data) => {
           const pointLayer = new PointLayer({})
-            .source(data, {
+            .source(data.slice(0, 1000), {
               parser: {
                 type: 'csv',
                 x: 'Longitude',
@@ -37,8 +37,9 @@ export default class Point3D extends React.Component {
               },
             })
             .shape('circle')
-            .size(8)
-            .active({
+            .size(16)
+            .active(true)
+            .select({
               color: 'red',
             })
             .color('Magnitude', [
@@ -61,21 +62,6 @@ export default class Point3D extends React.Component {
 
           scene.addLayer(pointLayer);
           this.scene = scene;
-          setTimeout(() => {
-            console.log('updatedata');
-            pointLayer.setData(
-              {
-                type: 'FeatureCollection',
-                features: [],
-              },
-              {
-                parser: {
-                  type: 'geojson',
-                },
-              },
-            );
-            console.log(pointLayer);
-          }, 3000);
         });
     });
   }

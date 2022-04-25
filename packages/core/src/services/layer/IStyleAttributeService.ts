@@ -60,7 +60,7 @@ export interface IScaleOption {
   domain?: any[];
 }
 export interface IScaleOptions {
-  [key: string]: IScale;
+  [key: string]: IScale | undefined;
 }
 export interface IStyleScale {
   scale: any;
@@ -76,6 +76,7 @@ export enum AttributeType {
 
 export interface IAnimateOption {
   enable: boolean;
+  type?: string;
   interval?: number;
   duration?: number;
   trailLength?: number;
@@ -110,10 +111,11 @@ export interface IVertexAttributeDescriptor
     vertex: number[],
     attributeIdx: number,
     normal: number[],
+    vertexIndex?: number,
   ) => number[];
 }
 
-type Position = number[];
+export type Position = number[];
 type Color = [number, number, number, number];
 type CallBack = (...args: any[]) => any;
 export type StyleAttributeField = string | string[] | number[];
@@ -161,11 +163,13 @@ export interface IStyleAttribute extends IStyleAttributeInitializationOptions {
 
 export type Triangulation = (
   feature: IEncodeFeature,
+  segmentNumber?: number,
 ) => {
   vertices: number[];
   indices: number[];
   size: number;
   normals?: number[];
+  indexes?: number[];
 };
 
 export interface IStyleAttributeUpdateOptions {
@@ -197,6 +201,7 @@ export interface IStyleAttributeService {
   createAttributesAndIndices(
     encodedFeatures: IEncodeFeature[],
     triangulation?: Triangulation,
+    segmentNumber?: number,
   ): {
     attributes: {
       [attributeName: string]: IAttribute;

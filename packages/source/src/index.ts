@@ -2,7 +2,7 @@ import { registerParser, registerTransform } from './factory';
 import csv from './parser/csv';
 import geojson from './parser/geojson';
 import image from './parser/image';
-import json from './parser/json';
+import json, { defaultData, defaultParser } from './parser/json';
 import raster from './parser/raster';
 import Source from './source';
 import { cluster } from './transform/cluster';
@@ -11,7 +11,6 @@ import { aggregatorToGrid } from './transform/grid';
 import { pointToHexbin } from './transform/hexagon';
 import { join } from './transform/join';
 import { map } from './transform/map';
-export default Source;
 registerParser('geojson', geojson);
 registerParser('image', image);
 registerParser('csv', csv);
@@ -31,3 +30,7 @@ export {
 } from './factory';
 
 export * from './interface';
+
+export const DEFAULT_DATA = defaultData;
+export const DEFAULT_PARSER = defaultParser;
+export default Source;

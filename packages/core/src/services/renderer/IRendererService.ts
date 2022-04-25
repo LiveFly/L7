@@ -18,6 +18,8 @@ export interface IRenderConfig {
   passes?: Array<IPass<unknown>>;
   antialias?: boolean;
   preserveDrawingBuffer?: boolean;
+  // TODO: 场景是否支持 stencil mask
+  stencil?: boolean;
 }
 
 export interface IClearOptions {
@@ -41,8 +43,14 @@ export interface IReadPixelsOptions {
   data?: Uint8Array;
 }
 
+export interface IExtensions {
+  OES_texture_float: boolean;
+}
+
 export interface IRendererService {
+  extensionObject: IExtensions;
   init(canvas: HTMLCanvasElement, cfg: IRenderConfig): Promise<void>;
+  testExtension(name: string): boolean;
   clear(options: IClearOptions): void;
   createModel(options: IModelInitializationOptions): IModel;
   createAttribute(options: IAttributeInitializationOptions): IAttribute;
@@ -58,8 +66,10 @@ export interface IRendererService {
   getContainer(): HTMLElement | null;
   getCanvas(): HTMLCanvasElement | null;
   getGLContext(): WebGLRenderingContext;
+  getPointSizeRange(): Float32Array;
   viewport(size: { x: number; y: number; width: number; height: number }): void;
   readPixels(options: IReadPixelsOptions): Uint8Array;
+  setState(): void;
   setBaseState(): void;
   setCustomLayerDefaults(): void;
   setDirty(flag: boolean): void;

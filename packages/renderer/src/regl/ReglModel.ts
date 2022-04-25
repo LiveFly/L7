@@ -6,8 +6,8 @@ import {
   IModelInitializationOptions,
   IUniform,
 } from '@antv/l7-core';
-import { isPlainObject, isTypedArray } from 'lodash';
-import regl from 'regl';
+import regl from 'l7regl';
+import { cloneDeep, extend, isPlainObject, isTypedArray } from 'lodash';
 import {
   blendEquationMap,
   blendFuncMap,
@@ -29,6 +29,7 @@ export default class ReglModel implements IModel {
   private reGl: regl.Regl;
   private destroyed: boolean = false;
   private drawCommand: regl.DrawCommand;
+  private drawPickCommand: regl.DrawCommand;
   private drawParams: regl.DrawConfig;
   private options: IModelInitializationOptions;
   private uniforms: {
@@ -71,6 +72,7 @@ export default class ReglModel implements IModel {
       frag: fs,
       uniforms: reglUniforms,
       vert: vs,
+      blend: {},
       primitive:
         primitiveMap[primitive === undefined ? gl.TRIANGLES : primitive],
     };
@@ -93,7 +95,34 @@ export default class ReglModel implements IModel {
     this.initCullDrawParams({ cull }, drawParams);
 
     this.drawCommand = reGl(drawParams);
+
+    const pickDrawParams = cloneDeep(drawParams);
+
+    pickDrawParams.blend = {
+      ...pickDrawParams.blend,
+      enable: false,
+    };
+
+    this.drawPickCommand = reGl(pickDrawParams);
     this.drawParams = drawParams;
+  }
+
+  public updateAttributes(attributes: { [key: string]: IAttribute }) {
+    const reglAttributes: { [key: string]: regl.Attribute } = {};
+    Object.keys(attributes).forEach((name: string) => {
+      reglAttributes[name] = (attributes[name] as ReglAttribute).get();
+    });
+    this.drawParams.attributes = reglAttributes;
+    this.drawCommand = this.reGl(this.drawParams);
+
+    const pickDrawParams = cloneDeep(this.drawParams);
+
+    pickDrawParams.blend = {
+      ...pickDrawParams.blend,
+      enable: false,
+    };
+
+    this.drawPickCommand = this.reGl(pickDrawParams);
   }
 
   public addUniforms(uniforms: { [key: string]: IUniform }) {
@@ -103,7 +132,8 @@ export default class ReglModel implements IModel {
     };
   }
 
-  public draw(options: IModelDrawOptions) {
+  public draw(options: IModelDrawOptions, pick?: boolean) {
+    // console.log('options', this.drawParams)
     if (
       this.drawParams.attributes &&
       Object.keys(this.drawParams.attributes).length === 0
@@ -124,7 +154,6 @@ export default class ReglModel implements IModel {
         | number[]
         | boolean;
     } = {};
-
     Object.keys(uniforms).forEach((uniformName: string) => {
       const type = typeof uniforms[uniformName];
       if (
@@ -144,7 +173,14 @@ export default class ReglModel implements IModel {
           | ReglTexture2D).get();
       }
     });
-    this.drawCommand(reglDrawProps);
+    // TODO: 在进行拾取操作的绘制中，不应该使用叠加模式 - picking 根据拾取的颜色作为判断的输入，而叠加模式会产生新的，在 id 序列中不存在的颜色
+    if (!pick) {
+      this.drawCommand(reglDrawProps);
+    } else {
+      this.drawPickCommand(reglDrawProps);
+    }
+    // this.drawCommand(reglDrawProps);
+    // this.drawPickCommand(reglDrawProps);
   }
 
   public destroy() {

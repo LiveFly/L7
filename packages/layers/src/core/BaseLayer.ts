@@ -19,22 +19,26 @@ import {
   ILayerModelInitializationOptions,
   ILayerPlugin,
   ILayerService,
-  ILogService,
+  ILegendClassificaItem,
+  ILegendSegmentItem,
   IMapService,
   IModel,
   IModelInitializationOptions,
   IMultiPassRenderer,
   IPass,
+  IPickingService,
   IPostProcessingPass,
   IRendererService,
   IScale,
   IScaleOptions,
   IShaderModuleService,
+  ISource,
   ISourceCFG,
   IStyleAttributeInitializationOptions,
   IStyleAttributeService,
   IStyleAttributeUpdateOptions,
   lazyInject,
+  LegendItems,
   ScaleAttributeType,
   ScaleTypeName,
   ScaleTypes,
@@ -46,12 +50,14 @@ import Source from '@antv/l7-source';
 import { encodePickingColor } from '@antv/l7-utils';
 import { EventEmitter } from 'eventemitter3';
 import { Container } from 'inversify';
-import { isFunction, isObject } from 'lodash';
-// @ts-ignore
-import mergeJsonSchemas from 'merge-json-schemas';
-import { normalizePasses } from '../plugins/MultiPassRendererPlugin';
+import { isEqual, isFunction, isObject, isUndefined } from 'lodash';
 import { BlendTypes } from '../utils/blend';
-import baseLayerSchema from './schema';
+import { handleStyleDataMapping } from '../utils/dataMappingStyle';
+import {
+  createMultiPassRenderer,
+  normalizePasses,
+} from '../utils/multiPassRender';
+import { updateShape } from '../utils/updateShape';
 /**
  * 分配 layer id
  */
@@ -71,6 +77,10 @@ export default class BaseLayer<ChildLayerStyleOptions = {}> extends EventEmitter
   public pickedFeatureID: number | null = null;
   public selectedFeatureID: number | null = null;
   public styleNeedUpdate: boolean = false;
+  public rendering: boolean;
+  public clusterZoom: number = 0; // 聚合等级标记
+  public layerType?: string | undefined;
+  public isLayerGroup: boolean = false;
 
   public dataState: IDataState = {
     dataSourceNeedUpdate: false,
@@ -112,15 +122,24 @@ export default class BaseLayer<ChildLayerStyleOptions = {}> extends EventEmitter
 
   public layerModel: ILayerModel;
 
-  @lazyInject(TYPES.ILogService)
-  protected readonly logger: ILogService;
+  public shapeOption: {
+    field: any;
+    values: any;
+  };
+
+  // TODO: 记录 sceneContainer 供创建子图层的时候使用 如 imageTileLayer
+  public sceneContainer: Container | undefined;
+  // TODO: 用于保存子图层对象
+  public layerChildren: ILayer[] = [];
+  public masks: ILayer[] = [];
 
   @lazyInject(TYPES.IGlobalConfigService)
   protected readonly configService: IGlobalConfigService;
 
-  @lazyInject(TYPES.IShaderModuleService)
-  protected readonly shaderModuleService: IShaderModuleService;
+  // @lazyInject(TYPES.IShaderModuleService)
+  // protected readonly shaderModuleService: IShaderModuleService;
 
+  protected shaderModuleService: IShaderModuleService;
   protected cameraService: ICameraService;
 
   protected coordinateService: ICoordinateSystemService;
@@ -128,6 +147,8 @@ export default class BaseLayer<ChildLayerStyleOptions = {}> extends EventEmitter
   protected iconService: IIconService;
 
   protected fontService: IFontService;
+
+  protected pickingService: IPickingService;
 
   protected rendererService: IRendererService;
 
@@ -180,6 +201,11 @@ export default class BaseLayer<ChildLayerStyleOptions = {}> extends EventEmitter
 
   private aniamateStatus: boolean = false;
 
+  // TODO: layer 保底颜色
+  private bottomColor = 'rgba(0, 0, 0, 0)';
+
+  private isDestroied: boolean = false;
+
   // private pickingPassRender: IPass<'pixelPicking'>;
 
   constructor(config: Partial<ILayerConfig & ChildLayerStyleOptions> = {}) {
@@ -187,6 +213,18 @@ export default class BaseLayer<ChildLayerStyleOptions = {}> extends EventEmitter
     this.name = config.name || this.id;
     this.zIndex = config.zIndex || 0;
     this.rawConfig = config;
+  }
+
+  public addMaskLayer(maskLayer: ILayer) {
+    this.masks.push(maskLayer);
+  }
+
+  public removeMaskLayer(maskLayer: ILayer) {
+    const layerIndex = this.masks.indexOf(maskLayer);
+    if (layerIndex > -1) {
+      this.masks.splice(layerIndex, 1);
+    }
+    maskLayer.destroy();
   }
 
   public getLayerConfig() {
@@ -203,6 +241,10 @@ export default class BaseLayer<ChildLayerStyleOptions = {}> extends EventEmitter
       };
     } else {
       const sceneId = this.container.get<string>(TYPES.SceneID);
+
+      // @ts-ignore
+      handleStyleDataMapping(configToUpdate, this); // 处理 style 中进行数据映射的属性字段
+
       this.configService.setLayerConfig(sceneId, this.id, {
         ...this.configService.getLayerConfig(this.id),
         ...this.needUpdateConfig,
@@ -218,15 +260,24 @@ export default class BaseLayer<ChildLayerStyleOptions = {}> extends EventEmitter
    *  -> SceneContainer 1.*
    *   -> LayerContainer 1.*
    */
-  public setContainer(container: Container) {
+  public setContainer(container: Container, sceneContainer: Container) {
     this.container = container;
+    this.sceneContainer = sceneContainer;
   }
 
   public getContainer() {
     return this.container;
   }
 
-  public addPlugin(plugin: ILayerPlugin) {
+  public setBottomColor(color: string) {
+    this.bottomColor = color;
+  }
+
+  public getBottomColor() {
+    return this.bottomColor;
+  }
+
+  public addPlugin(plugin: ILayerPlugin): ILayer {
     // TODO: 控制插件注册顺序
     // @example:
     // pointLayer.addPlugin(new MyCustomPlugin(), {
@@ -240,10 +291,12 @@ export default class BaseLayer<ChildLayerStyleOptions = {}> extends EventEmitter
     // 设置配置项
     const sceneId = this.container.get<string>(TYPES.SceneID);
     // 初始化图层配置项
-    const { enableMultiPassRenderer = false } = this.rawConfig;
-    this.configService.setLayerConfig(sceneId, this.id, {
-      enableMultiPassRenderer,
-    });
+    // const { enableMultiPassRenderer = false } = this.rawConfig;
+    // this.configService.setLayerConfig(sceneId, this.id, {
+    //   enableMultiPassRenderer,
+    // });
+    this.configService.setLayerConfig(sceneId, this.id, this.rawConfig);
+    this.layerType = this.rawConfig.layerType;
 
     // 全局容器服务
 
@@ -258,12 +311,27 @@ export default class BaseLayer<ChildLayerStyleOptions = {}> extends EventEmitter
     this.interactionService = this.container.get<IInteractionService>(
       TYPES.IInteractionService,
     );
+
+    this.pickingService = this.container.get<IPickingService>(
+      TYPES.IPickingService,
+    );
     this.mapService = this.container.get<IMapService>(TYPES.IMapService);
+    const { enableMultiPassRenderer, passes } = this.getLayerConfig();
+    if (enableMultiPassRenderer && passes?.length && passes.length > 0) {
+      // Tip: 兼容 multiPassRender 在 amap1 时存在的图层不同步问题 zoom
+      this.mapService.on('mapAfterFrameChange', () => {
+        this.renderLayers();
+      });
+    }
+
     this.cameraService = this.container.get<ICameraService>(
       TYPES.ICameraService,
     );
     this.coordinateService = this.container.get<ICoordinateSystemService>(
       TYPES.ICoordinateSystemService,
+    );
+    this.shaderModuleService = this.container.get<IShaderModuleService>(
+      TYPES.IShaderModuleService,
     );
     this.postProcessingPassFactory = this.container.get(
       TYPES.IFactoryPostProcessingPass,
@@ -368,6 +436,16 @@ export default class BaseLayer<ChildLayerStyleOptions = {}> extends EventEmitter
     return this;
   }
 
+  // 为对应的图层传入纹理的编号名称（point/image 在 shape 方法中传入纹理名称的方法并不通用）
+  public texture(
+    field: StyleAttributeField,
+    values?: StyleAttributeOption,
+    updateOptions?: Partial<IStyleAttributeUpdateOptions>,
+  ) {
+    this.updateStyleAttribute('texture', field, values, updateOptions);
+    return this;
+  }
+
   public rotate(
     field: StyleAttributeField,
     values?: StyleAttributeOption,
@@ -399,7 +477,17 @@ export default class BaseLayer<ChildLayerStyleOptions = {}> extends EventEmitter
     values?: StyleAttributeOption,
     updateOptions?: Partial<IStyleAttributeUpdateOptions>,
   ) {
+    const lastShape = this.styleAttributeService?.getLayerStyleAttribute(
+      'shape',
+    )?.scale?.field;
+    const currentShape = field;
+    this.shapeOption = {
+      field,
+      values,
+    };
     this.updateStyleAttribute('shape', field, values, updateOptions);
+    // TODO: 根据 shape 判断是否需要更新 model
+    updateShape(this, lastShape, currentShape);
     return this;
   }
   public label(
@@ -434,10 +522,16 @@ export default class BaseLayer<ChildLayerStyleOptions = {}> extends EventEmitter
   }
 
   public source(data: any, options?: ISourceCFG): ILayer {
+    if (data?.data) {
+      // 判断是否为source
+      this.setSource(data);
+      return this;
+    }
     this.sourceOption = {
       data,
       options,
     };
+    this.clusterZoom = 0;
     return this;
   }
 
@@ -446,7 +540,15 @@ export default class BaseLayer<ChildLayerStyleOptions = {}> extends EventEmitter
       this.layerSource.setData(data, options);
     } else {
       this.on('inited', () => {
-        this.layerSource.setData(data, options);
+        const currentSource = this.getSource();
+        if (!currentSource) {
+          // 执行 setData 的时候 source 还不存在（还未执行 addLayer）
+          this.source(new Source(data, options));
+          this.sourceEvent();
+        } else {
+          this.layerSource.setData(data, options);
+        }
+        // this.layerSource.setData(data, options);
       });
     }
 
@@ -455,6 +557,7 @@ export default class BaseLayer<ChildLayerStyleOptions = {}> extends EventEmitter
   public style(
     options: Partial<ChildLayerStyleOptions> & Partial<ILayerConfig>,
   ): ILayer {
+    const lastConfig = this.getLayerConfig();
     const { passes, ...rest } = options;
 
     // passes 特殊处理
@@ -475,14 +578,19 @@ export default class BaseLayer<ChildLayerStyleOptions = {}> extends EventEmitter
       ...this.rawConfig,
       ...rest,
     };
-
     if (this.container) {
       this.updateLayerConfig(this.rawConfig);
       this.styleNeedUpdate = true;
     }
+
+    // @ts-ignore
+    if (lastConfig && lastConfig.mask === true && options.mask === false) {
+      this.clearModels();
+      this.models = this.layerModel.buildModels();
+    }
     return this;
   }
-  public scale(field: string | IScaleOptions, cfg: IScale) {
+  public scale(field: string | number | IScaleOptions, cfg?: IScale) {
     if (isObject(field)) {
       this.scaleOptions = {
         ...this.scaleOptions,
@@ -493,31 +601,53 @@ export default class BaseLayer<ChildLayerStyleOptions = {}> extends EventEmitter
     }
     return this;
   }
+
+  /**
+   * 渲染所有的图层
+   */
+  public renderLayers(): void {
+    this.rendering = true;
+
+    this.layerService.renderLayers();
+
+    this.rendering = false;
+  }
+
   public render(): ILayer {
-    // if (
-    //   this.needPick() &&
-    //   this.multiPassRenderer &&
-    //   this.multiPassRenderer.getRenderFlag()
-    // ) {
-    //   this.multiPassRenderer.render();
-    // } else if (this.needPick() && this.multiPassRenderer) {
-    //   this.renderModels();
-    // } else {
-    //   this.renderModels();
-    // }
-    this.renderModels();
-    // this.multiPassRenderer.render();
-    // this.renderModels();
+    // TODO: this.getEncodedData().length !== 0 这个判断是为了解决在 2.5.x 引入数据纹理后产生的 空数据渲染导致 texture 超出上限问题
+    if (this.getEncodedData().length !== 0) {
+      this.renderModels();
+    }
     return this;
   }
 
-  public active(options: IActiveOption) {
+  /**
+   * renderMultiPass 专门用于渲染支持 multipass 的 layer
+   */
+  public async renderMultiPass() {
+    if (this.getEncodedData().length !== 0) {
+      if (this.multiPassRenderer && this.multiPassRenderer.getRenderFlag()) {
+        // multi render 开始执行 multiPassRender 的渲染流程
+        await this.multiPassRenderer.render();
+      } else if (this.multiPassRenderer) {
+        // renderPass 触发的渲染
+        this.renderModels();
+      } else {
+        this.renderModels();
+      }
+    }
+  }
+
+  public active(options: IActiveOption | boolean) {
     const activeOption: Partial<ILayerConfig> = {};
     activeOption.enableHighlight = isObject(options) ? true : options;
     if (isObject(options)) {
       activeOption.enableHighlight = true;
       if (options.color) {
         activeOption.highlightColor = options.color;
+      }
+      if (options.mix) {
+        activeOption.activeMix = options.mix;
       }
     } else {
       activeOption.enableHighlight = !!options;
@@ -535,6 +665,9 @@ export default class BaseLayer<ChildLayerStyleOptions = {}> extends EventEmitter
         highlightColor: isObject(options)
           ? options.color
           : this.getLayerConfig().highlightColor,
+        activeMix: isObject(options)
+          ? options.mix
+          : this.getLayerConfig().activeMix,
       });
       this.pick({ x, y });
     } else {
@@ -543,6 +676,9 @@ export default class BaseLayer<ChildLayerStyleOptions = {}> extends EventEmitter
         highlightColor: isObject(options)
           ? options.color
           : this.getLayerConfig().highlightColor,
+        activeMix: isObject(options)
+          ? options.mix
+          : this.getLayerConfig().activeMix,
       });
       this.hooks.beforeSelect
         .call(encodePickingColor(id as number) as number[])
@@ -563,6 +699,9 @@ export default class BaseLayer<ChildLayerStyleOptions = {}> extends EventEmitter
       if (option.color) {
         activeOption.selectColor = option.color;
       }
+      if (option.mix) {
+        activeOption.selectMix = option.mix;
+      }
     } else {
       activeOption.enableSelect = !!option;
     }
@@ -580,6 +719,9 @@ export default class BaseLayer<ChildLayerStyleOptions = {}> extends EventEmitter
         selectColor: isObject(options)
           ? options.color
           : this.getLayerConfig().selectColor,
+        selectMix: isObject(options)
+          ? options.mix
+          : this.getLayerConfig().selectMix,
       });
       this.pick({ x, y });
     } else {
@@ -588,6 +730,9 @@ export default class BaseLayer<ChildLayerStyleOptions = {}> extends EventEmitter
         selectColor: isObject(options)
           ? options.color
           : this.getLayerConfig().selectColor,
+        selectMix: isObject(options)
+          ? options.mix
+          : this.getLayerConfig().selectMix,
       });
       this.hooks.beforeSelect
         .call(encodePickingColor(id as number) as number[])
@@ -599,12 +744,13 @@ export default class BaseLayer<ChildLayerStyleOptions = {}> extends EventEmitter
         });
     }
   }
-  public setBlend(type: keyof typeof BlendType): void {
+  public setBlend(type: keyof typeof BlendType): ILayer {
     this.updateLayerConfig({
       blend: type,
     });
     this.layerModelNeedUpdate = true;
     this.reRender();
+    return this;
   }
   public show(): ILayer {
     this.updateLayerConfig({
@@ -623,7 +769,8 @@ export default class BaseLayer<ChildLayerStyleOptions = {}> extends EventEmitter
   }
   public setIndex(index: number): ILayer {
     this.zIndex = index;
-    this.layerService.updateRenderOrder();
+    this.layerService.updateLayerRenderList();
+    this.layerService.renderLayers();
     return this;
   }
 
@@ -650,6 +797,35 @@ export default class BaseLayer<ChildLayerStyleOptions = {}> extends EventEmitter
       maxZoom = Infinity,
     } = this.getLayerConfig();
     return !!visible && zoom >= minZoom && zoom <= maxZoom;
+  }
+
+  public setMultiPass(
+    enableMultiPass: boolean,
+    currentPasses?: Array<string | [string, { [key: string]: unknown }]>,
+  ) {
+    this.updateLayerConfig({
+      enableMultiPassRenderer: enableMultiPass,
+    });
+    if (currentPasses) {
+      this.updateLayerConfig({
+        passes: currentPasses,
+      });
+    }
+
+    if (enableMultiPass) {
+      const { passes = [] } = this.getLayerConfig();
+      this.multiPassRenderer = createMultiPassRenderer(
+        this,
+        passes,
+        this.postProcessingPassFactory,
+        this.normalPassFactory,
+      );
+      this.multiPassRenderer.setRenderFlag(true);
+      const { width, height } = this.rendererService.getViewportSize();
+      this.multiPassRenderer.resize(width, height);
+    }
+
+    return this;
   }
 
   public setMinZoom(minZoom: number): ILayer {
@@ -681,6 +857,14 @@ export default class BaseLayer<ChildLayerStyleOptions = {}> extends EventEmitter
     });
     return this;
   }
+
+  public setAutoFit(autoFit: boolean): ILayer {
+    this.updateLayerConfig({
+      autoFit,
+    });
+    return this;
+  }
+
   /**
    * zoom to layer Bounds
    */
@@ -708,28 +892,53 @@ export default class BaseLayer<ChildLayerStyleOptions = {}> extends EventEmitter
   }
 
   public destroy() {
+    if (this.isDestroied) {
+      return;
+    }
+
+    // remove child layer
+    this.layerChildren.map((child: ILayer) => child.destroy());
+    this.layerChildren = [];
+
+    // remove mask list
+    this.masks.map((mask: ILayer) => mask.destroy());
+    this.masks = [];
+
     this.hooks.beforeDestroy.call();
     // 清除sources事件
     this.layerSource.off('update', this.sourceEvent);
 
     this.multiPassRenderer.destroy();
-
-    // 清除所有属性以及关联的 vao
+    // console.log(this.styleAttributeService.getAttributes())
+    // 清除所有属性以及关联的 vao == 销毁所有 => model this.models.forEach((model) => model.destroy());
     this.styleAttributeService.clearAllAttributes();
-    // 销毁所有 model
-    // this.models.forEach((model) => model.destroy());
+
+    // 执行每个图层单独的 clearModels 方法 （清除一些额外的 texture、program、buffer 等）
 
     this.hooks.afterDestroy.call();
+
+    // TODO: 清除各个图层自定义的 models 资源
+    this.layerModel?.clearModels();
+
+    this.models = [];
+
+    this.layerService.cleanRemove(this);
 
     this.emit('remove', {
       target: this,
       type: 'remove',
     });
 
-    this.removeAllListeners();
+    this.emit('destroy', {
+      target: this,
+      type: 'destroy',
+    });
 
+    this.removeAllListeners();
     // 解绑图层容器中的服务
     // this.container.unbind(TYPES.IStyleAttributeService);
+
+    this.isDestroied = true;
   }
   public clear() {
     this.styleAttributeService.clearAllAttributes();
@@ -738,6 +947,7 @@ export default class BaseLayer<ChildLayerStyleOptions = {}> extends EventEmitter
   public clearModels() {
     this.models.forEach((model) => model.destroy());
     this.layerModel.clearModels();
+    this.models = [];
   }
 
   public isDirty() {
@@ -752,9 +962,17 @@ export default class BaseLayer<ChildLayerStyleOptions = {}> extends EventEmitter
   }
 
   public setSource(source: Source) {
+    // 清除旧 sources 事件
+    if (this.layerSource) {
+      this.layerSource.off('update', this.sourceEvent);
+    }
+
     this.layerSource = source;
-    const zoom = this.mapService.getZoom();
-    if (this.layerSource.cluster) {
+    this.clusterZoom = 0;
+
+    // 已 inited 且启用聚合进行更新聚合数据
+    if (this.inited && this.layerSource.cluster) {
+      const zoom = this.mapService.getZoom();
       this.layerSource.updateClusterData(zoom);
     }
     // source 可能会复用，会在其它layer被修改
@@ -775,44 +993,67 @@ export default class BaseLayer<ChildLayerStyleOptions = {}> extends EventEmitter
     return this.encodedData;
   }
 
-  public getConfigSchemaForValidation() {
-    if (!this.configSchema) {
-      // 相比 allOf, merge 有一些优势
-      // @see https://github.com/goodeggs/merge-json-schemas
-      this.configSchema = mergeJsonSchemas([
-        baseLayerSchema,
-        this.getConfigSchema(),
-      ]);
-    }
-    return this.configSchema;
+  public getScale(name: string): any {
+    return this.styleAttributeService.getLayerAttributeScale(name);
   }
-  public getLegendItems(name: string): any {
+
+  public getLegendItems(name: string): LegendItems {
     const scale = this.styleAttributeService.getLayerAttributeScale(name);
-    if (scale) {
-      if (scale.ticks) {
-        const items = scale.ticks().map((item: any) => {
+
+    // 函数自定义映射，没有 scale 返回为空数组
+    if (!scale) {
+      return [];
+    }
+
+    if (scale.invertExtent) {
+      // 分段类型  Quantize、Quantile、Threshold
+      const items: ILegendSegmentItem[] = scale.range().map((item: number) => {
+        return {
+          value: scale.invertExtent(item),
+          [name]: item,
+        };
+      });
+
+      return items;
+    } else if (scale.ticks) {
+      // 连续类型 Continuous (Linear, Power, Log, Identity, Time)
+      const items: ILegendClassificaItem[] = scale
+        .ticks()
+        .map((item: string) => {
           return {
             value: item,
             [name]: scale(item),
           };
         });
-        return items;
-      } else if (scale.invertExtent) {
-        const items = scale.range().map((item: any) => {
+
+      return items;
+    } else if (scale?.domain) {
+      // 枚举类型 Cat
+      const items: ILegendClassificaItem[] = scale
+        .domain()
+        .filter((item: string | number | undefined) => !isUndefined(item))
+        .map((item: string | number) => {
           return {
-            value: scale.invertExtent(item),
-            [name]: item,
+            value: item,
+            [name]: scale(item) as string,
           };
         });
-        return items;
-      }
-    } else {
-      return [];
+
+      return items;
     }
+
+    return [];
   }
 
   public pick({ x, y }: { x: number; y: number }) {
     this.interactionService.triggerHover({ x, y });
+  }
+
+  public boxSelect(
+    box: [number, number, number, number],
+    cb: (...args: any[]) => void,
+  ) {
+    this.pickingService.boxPickLayer(this, box, cb);
   }
 
   public buildLayerModel(
@@ -824,6 +1065,7 @@ export default class BaseLayer<ChildLayerStyleOptions = {}> extends EventEmitter
       vertexShader,
       fragmentShader,
       triangulation,
+      segmentNumber,
       ...rest
     } = options;
     this.shaderModuleService.registerModule(moduleName, {
@@ -838,6 +1080,7 @@ export default class BaseLayer<ChildLayerStyleOptions = {}> extends EventEmitter
     } = this.styleAttributeService.createAttributesAndIndices(
       this.encodedData,
       triangulation,
+      segmentNumber,
     );
     return createModel({
       attributes,
@@ -848,6 +1091,19 @@ export default class BaseLayer<ChildLayerStyleOptions = {}> extends EventEmitter
       blend: BlendTypes[BlendType.normal],
       ...rest,
     });
+  }
+
+  public createAttrubutes(
+    options: ILayerModelInitializationOptions &
+      Partial<IModelInitializationOptions>,
+  ) {
+    const { triangulation } = options;
+    // @ts-ignore
+    const { attributes } = this.styleAttributeService.createAttributes(
+      this.encodedData,
+      triangulation,
+    );
+    return attributes;
   }
 
   public getTime() {
@@ -902,60 +1158,35 @@ export default class BaseLayer<ChildLayerStyleOptions = {}> extends EventEmitter
     throw new Error('Method not implemented.');
   }
 
-  public renderModels() {
-    if (this.layerModelNeedUpdate && this.layerModel) {
-      this.models = this.layerModel.buildModels();
-      this.hooks.beforeRender.call();
-      this.layerModelNeedUpdate = false;
-    }
-    this.models.forEach((model) => {
-      model.draw({
-        uniforms: this.layerModel.getUninforms(),
+  public async renderMulPass(multiPassRenderer: IMultiPassRenderer) {
+    await multiPassRenderer.render();
+  }
+
+  public renderModels(isPicking?: boolean) {
+    // TODO: this.getEncodedData().length > 0 这个判断是为了解决在 2.5.x 引入数据纹理后产生的 空数据渲染导致 texture 超出上限问题
+    if (this.getEncodedData().length > 0) {
+      if (this.layerModelNeedUpdate && this.layerModel) {
+        this.models = this.layerModel.buildModels();
+        this.hooks.beforeRender.call();
+        this.layerModelNeedUpdate = false;
+      }
+
+      if (this.layerModel.renderUpdate) {
+        this.layerModel.renderUpdate();
+      }
+      this.models.forEach((model) => {
+        model.draw(
+          {
+            uniforms: this.layerModel.getUninforms(),
+          },
+          isPicking,
+        );
       });
-    });
+    }
     return this;
   }
 
-  protected getConfigSchema() {
-    throw new Error('Method not implemented.');
-  }
-
-  protected getModelType(): unknown {
-    throw new Error('Method not implemented.');
-  }
-  protected getDefaultConfig() {
-    return {};
-  }
-
-  private sourceEvent = () => {
-    this.dataState.dataSourceNeedUpdate = true;
-    const { autoFit, fitBoundsOptions } = this.getLayerConfig();
-    if (autoFit) {
-      this.fitBounds(fitBoundsOptions);
-    }
-
-    this.emit('dataUpdate');
-    this.reRender();
-  };
-
-  private reRender() {
-    if (this.inited) {
-      this.layerService.renderLayers();
-    }
-  }
-  private splitValuesAndCallbackInAttribute(
-    valuesOrCallback?: unknown[],
-    defaultValues?: unknown[],
-  ) {
-    return {
-      values: isFunction(valuesOrCallback)
-        ? undefined
-        : valuesOrCallback || defaultValues,
-      callback: isFunction(valuesOrCallback) ? valuesOrCallback : undefined,
-    };
-  }
-
-  private updateStyleAttribute(
+  public updateStyleAttribute(
     type: string,
     field: StyleAttributeField,
     values?: StyleAttributeOption,
@@ -987,5 +1218,57 @@ export default class BaseLayer<ChildLayerStyleOptions = {}> extends EventEmitter
         updateOptions,
       );
     }
+  }
+
+  public getShaderPickStat() {
+    return this.layerService.getShaderPickStat();
+  }
+
+  /**
+   * 继承空方法
+   * @param time
+   */
+  public setEarthTime(time: number) {
+    console.warn('empty fn');
+  }
+
+  protected getConfigSchema() {
+    throw new Error('Method not implemented.');
+  }
+
+  protected getModelType(): unknown {
+    throw new Error('Method not implemented.');
+  }
+  protected getDefaultConfig() {
+    return {};
+  }
+
+  private sourceEvent = () => {
+    this.dataState.dataSourceNeedUpdate = true;
+    const { autoFit, fitBoundsOptions } = this.getLayerConfig();
+    if (autoFit) {
+      this.fitBounds(fitBoundsOptions);
+    }
+    // 对外暴露事件 迁移到 DataMappingPlugin generateMapping，保证在重新重新映射后触发
+    // this.emit('dataUpdate');
+    this.reRender();
+  };
+
+  private reRender() {
+    if (this.inited) {
+      this.layerService.updateLayerRenderList();
+      this.layerService.renderLayers();
+    }
+  }
+  private splitValuesAndCallbackInAttribute(
+    valuesOrCallback?: unknown[],
+    defaultValues?: unknown[],
+  ) {
+    return {
+      values: isFunction(valuesOrCallback)
+        ? undefined
+        : valuesOrCallback || defaultValues,
+      callback: isFunction(valuesOrCallback) ? valuesOrCallback : undefined,
+    };
   }
 }

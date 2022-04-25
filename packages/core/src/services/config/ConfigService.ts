@@ -1,6 +1,7 @@
 // import Ajv from 'ajv';
 import { injectable, postConstruct } from 'inversify';
 import { merge } from 'lodash';
+import 'reflect-metadata';
 import { ILayerConfig } from '../layer/ILayerService';
 import { IRenderConfig } from '../renderer/IRendererService';
 import { IGlobalConfigService, ISceneConfig } from './IConfigService';
@@ -69,7 +70,9 @@ const defaultLayerConfig: Partial<ILayerConfig> = {
   enableHighlight: false,
   enableSelect: false,
   highlightColor: '#2f54eb',
+  activeMix: 0,
   selectColor: 'blue',
+  selectMix: 0,
   enableTAA: false,
   jitterScale: 1,
   enableLighting: false,
@@ -79,6 +82,7 @@ const defaultLayerConfig: Partial<ILayerConfig> = {
     duration: 4,
     trailLength: 0.15,
   },
+  forward: true, // 默认是正方向
 };
 
 // @see https://github.com/epoberezkin/ajv#options

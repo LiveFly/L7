@@ -35,7 +35,6 @@ export function buildMapping({
   });
 
   const rowHeight = fontHeight + buffer * 2;
-
   return {
     mapping,
     xOffset: x,
@@ -56,10 +55,10 @@ export function buildIconMaping(
   const mapping: IICONMap = {};
   for (const icon of icons) {
     if (!mapping[icon.id]) {
-      const { height, width } = icon;
+      const { size } = icon;
 
       // fill one row
-      if (xOffset + width + buffer > maxCanvasWidth) {
+      if (xOffset + size + buffer > maxCanvasWidth) {
         buildRowMapping(mapping, columns, yOffset);
 
         xOffset = 0;
@@ -73,8 +72,8 @@ export function buildIconMaping(
         xOffset,
       });
 
-      xOffset = xOffset + width + buffer;
-      rowHeight = Math.max(rowHeight, height);
+      xOffset = xOffset + size + buffer;
+      rowHeight = Math.max(rowHeight, size);
     }
   }
 
@@ -99,7 +98,14 @@ function buildRowMapping(
 ) {
   for (const column of columns) {
     const { icon, xOffset } = column;
-    mapping[icon.id] = { ...icon, x: xOffset, y: yOffset, image: icon.image };
+    mapping[icon.id] = {
+      ...icon,
+      x: xOffset,
+      y: yOffset,
+      image: icon.image,
+      width: icon.width,
+      height: icon.height,
+    };
   }
 }
 export function nextPowOfTwo(num: number) {

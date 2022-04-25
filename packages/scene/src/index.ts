@@ -3,6 +3,7 @@ import {
   Bounds,
   createLayerContainer,
   createSceneContainer,
+  ICameraOptions,
   IControl,
   IControlService,
   IFontService,
@@ -29,8 +30,9 @@ import {
   SceneEventList,
   TYPES,
 } from '@antv/l7-core';
+import { MaskLayer } from '@antv/l7-layers';
 import { ReglRendererService } from '@antv/l7-renderer';
-import { DOM } from '@antv/l7-utils';
+import { DOM, isMini } from '@antv/l7-utils';
 import { Container } from 'inversify';
 import ILayerManager from './ILayerManager';
 import IMapController from './IMapController';
@@ -62,12 +64,12 @@ class Scene
   private container: Container;
 
   public constructor(config: ISceneConfig) {
-    const { id, map } = config;
+    const { id, map, canvas, hasBaseMap } = config;
     // 创建场景容器
     const sceneContainer = createSceneContainer();
     this.container = sceneContainer;
     // 绑定地图服务
-    map.setContainer(sceneContainer, id);
+    map.setContainer(sceneContainer, id, canvas, hasBaseMap);
 
     // 绑定渲染引擎服务
     sceneContainer
@@ -95,14 +97,27 @@ class Scene
     );
     this.popupService = sceneContainer.get<IPopupService>(TYPES.IPopupService);
 
-    this.initComponent(id);
+    if (isMini) {
+      this.sceneService.initMiniScene(config);
+    } else {
+      this.initComponent(id);
 
-    // 初始化 scene
-    this.sceneService.init(config);
-    // TODO: 初始化组件
+      // 初始化 scene
+      this.sceneService.init(config);
+      // TODO: 初始化组件
 
-    this.initControl();
+      this.initControl();
+    }
   }
+
+  public get map() {
+    return this.mapService.map;
+  }
+
+  public get loaded() {
+    return this.sceneService.loaded;
+  }
+
   public getServiceContainer(): Container {
     return this.container;
   }
@@ -148,8 +163,8 @@ class Scene
     }
   }
 
-  public get map() {
-    return this.mapService.map;
+  public setBgColor(color: string) {
+    this.mapService.setBgColor(color);
   }
 
   // layer 管理
@@ -157,8 +172,48 @@ class Scene
     // 为当前图层创建一个容器
     // TODO: 初始化的时候设置 容器
     const layerContainer = createLayerContainer(this.container);
-    layer.setContainer(layerContainer);
+    layer.setContainer(layerContainer, this.container);
     this.sceneService.addLayer(layer);
+
+    const layerConfig = layer.getLayerConfig();
+    if (layerConfig) {
+      // 若 layer 未初始化成功，则 layerConfig 为 undefined （scene loaded 尚未执行完成）
+      const {
+        mask,
+        maskfence,
+        maskColor = '#000',
+        maskOpacity = 0,
+      } = layerConfig;
+      if (mask && maskfence) {
+        const maskInstance = new MaskLayer()
+          .source(maskfence)
+          .shape('fill')
+          .color(maskColor)
+          .style({
+            opacity: maskOpacity,
+          });
+
+        this.addMask(maskInstance, layer.id);
+      }
+    } else {
+      console.warn('addLayer should run after scene loaded!');
+    }
+  }
+
+  public addMask(mask: ILayer, layerId: string) {
+    const parent = this.getLayer(layerId);
+    if (parent) {
+      const layerContainer = createLayerContainer(this.container);
+      mask.setContainer(layerContainer, this.container);
+      parent.addMaskLayer(mask);
+      this.sceneService.addLayer(mask);
+    } else {
+      console.warn('parent layer not find!');
+    }
+  }
+
+  public getPickedLayer() {
+    return this.layerService.pickedLayerId;
   }
 
   public getLayers(): ILayer[] {
@@ -173,8 +228,8 @@ class Scene
     return this.layerService.getLayerByName(name);
   }
 
-  public removeLayer(layer: ILayer): void {
-    this.layerService.remove(layer);
+  public removeLayer(layer: ILayer, parentLayer?: ILayer): void {
+    this.layerService.remove(layer, parentLayer);
   }
 
   public removeAllLayer(): void {
@@ -185,9 +240,41 @@ class Scene
     this.sceneService.render();
   }
 
+  public setEnableRender(flag: boolean) {
+    this.layerService.setEnableRender(flag);
+  }
+
   // asset method
+  /**
+   * 为 layer/point/text 支持 iconfont 模式支持
+   * @param fontUnicode
+   * @param name
+   */
+  public addIconFont(name: string, fontUnicode: string): void {
+    this.fontService.addIconFont(name, fontUnicode);
+  }
+
+  public addIconFonts(options: string[][]): void {
+    options.forEach(([name, fontUnicode]) => {
+      this.fontService.addIconFont(name, fontUnicode);
+    });
+  }
+  /**
+   * 用户自定义添加第三方字体
+   * @param fontFamily
+   * @param fontPath
+   */
+  public addFontFace(fontFamily: string, fontPath: string): void {
+    this.sceneService.addFontFace(fontFamily, fontPath);
+  }
+
   public addImage(id: string, img: IImage) {
-    this.iconService.addImage(id, img);
+    if (!isMini) {
+      this.iconService.addImage(id, img);
+    } else {
+      this.iconService.addImageMini(id, img, this.sceneService);
+    }
+    // this.iconService.addImage(id, img);
   }
 
   public hasImage(id: string) {
@@ -242,6 +329,12 @@ class Scene
       : this.sceneService.on(type, handle);
   }
 
+  public once(type: string, handle: (...args: any[]) => void): void {
+    SceneEventList.indexOf(type) === -1
+      ? this.mapService.once(type, handle)
+      : this.sceneService.once(type, handle);
+  }
+
   public off(type: string, handle: (...args: any[]) => void): void {
     SceneEventList.indexOf(type) === -1
       ? this.mapService.off(type, handle)
@@ -254,12 +347,12 @@ class Scene
     return this.mapService.getZoom();
   }
 
-  public getCenter(): ILngLat {
-    return this.mapService.getCenter();
+  public getCenter(options?: ICameraOptions): ILngLat {
+    return this.mapService.getCenter(options);
   }
 
-  public setCenter(center: [number, number]) {
-    return this.mapService.setCenter(center);
+  public setCenter(center: [number, number], options?: ICameraOptions) {
+    return this.mapService.setCenter(center, options);
   }
 
   public getPitch(): number {
@@ -293,8 +386,8 @@ class Scene
     this.mapService.panTo(p);
   }
 
-  public panBy(pixel: Point): void {
-    this.mapService.panBy(pixel);
+  public panBy(x: number, y: number): void {
+    this.mapService.panBy(x, y);
   }
 
   public getContainer() {
@@ -359,6 +452,20 @@ class Scene
       .whenTargetNamed(name);
   }
 
+  // 控制 shader pick 计算
+  public enableShaderPick() {
+    this.layerService.enableShaderPick();
+  }
+
+  public diasbleShaderPick() {
+    this.layerService.disableShaderPick();
+  }
+
+  // get current point size info
+  public getPointSizeRange() {
+    return this.sceneService.getPointSizeRange();
+  }
+
   private initComponent(id: string | HTMLDivElement) {
     this.controlService.init(
       {
@@ -376,7 +483,6 @@ class Scene
       this.addControl(new Logo({ position: logoPosition }));
     }
   }
-  // 资源管理
 }
 
 export { Scene };

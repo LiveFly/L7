@@ -1,4 +1,5 @@
 import { inject, injectable } from 'inversify';
+import 'reflect-metadata';
 import { TYPES } from '../../../types';
 import { ILayer } from '../../layer/ILayerService';
 import {
@@ -62,13 +63,13 @@ export default class MultiPassRenderer implements IMultiPassRenderer {
     for (const pass of this.passes) {
       await pass.render(this.layer);
     }
-    this.layer.renderModels();
-    // await this.postProcessor.render(this.layer);
+    // this.layer.renderModels();
+    await this.postProcessor.render(this.layer);
   }
 
   public resize(width: number, height: number) {
     if (this.width !== width || this.height !== height) {
-      // this.postProcessor.resize(width, height);
+      this.postProcessor.resize(width, height);
       this.width = width;
       this.height = height;
     }

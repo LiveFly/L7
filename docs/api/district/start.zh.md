@@ -1,39 +1,46 @@
 ---
-title: 快速开始
+title: 文档链接
 order: 0
 ---
 
-`markdown:docs/common/style.md`
+旧版地图行政区划组件 - [L7Boundary](https://antv.vision/L7-boundary/)
 
-地图行政区划组件，支持世界地图，中国地图省市县三级，支持中国地图省市县上钻下取。
+新版地图行政区划组件 - [L7Plot Choropleth](https://l7plot.antv.vision/zh/docs/api/plots/choropleth)
 
-## 使用
+🌟 旧版本行政区划组件库不再继续维护，推荐使用 L7Plot 的 [Choropleth 行政区划图表](https://l7plot.antv.vision/zh/examples/gallery#category-%E8%A1%8C%E6%94%BF%E5%8C%BA%E5%9F%9F)。
 
-**using modules**
+## 使用方式
 
-```javascript
-import { WorldLayer } from '@antv/l7-district';
+1. 按图表方式，[在线示例](https://l7plot.antv.vision/zh/examples/choropleth/administrative#china-map)
+
+```js
+import { Choropleth } from '@antv/l7plot';
+
+const choropleth = new Choropleth('container', options);
 ```
 
-**CDN 版本引用**
+2. 按场景方式，[在线示例](/zh/examples/choropleth/administrative#china-map)
 
-```html
-<head>
-  <! --引入最新版的L7-District -->
-  <script src="https://unpkg.com/@antv/l7-district"></script>
-</head>
+```js
+import { Scene, Mapbox } from '@antv/l7';
+import { Choropleth } from '@antv/l7plot';
+
+const scene = new Scene({
+  id: 'container',
+  map: new Mapbox({
+    style: 'light',
+    center: [102.447303, 37.753574],
+    zoom: 5,
+  }),
+});
+
+const choropleth = new Choropleth(options);
+
+scene.on('loaded', () => {
+  choropleth.addToScene(scene);
+});
 ```
 
-⚠️⚠️⚠️ District 相关配置和接口还在完善中，你可以适用体验，某些配置和接口可能会进行调整
+## API
 
-### 数据
-
-District 提供 polygon 数据需要跟用户的属性数据，通过关系字段进行连接
-
-- [国家名称对照表](https://gw.alipayobjects.com/os/bmw-prod/b6fcd072-72a7-4875-8e05-9652ffc977d9.csv)
-
-- [省级行政名称*adcode*对照表.csv](https://gw.alipayobjects.com/os/bmw-prod/2aa6fb7b-3694-4df3-b601-6f6f9adac496.csv)
-
-- [市级行政区划及编码](https://gw.alipayobjects.com/os/bmw-prod/d2aefd78-f5df-486f-9310-7449cc7f5569.csv)
-
-- [县级行政区名称级编码](https://gw.alipayobjects.com/os/bmw-prod/fafd299e-0e1e-4fa2-a8ac-10a984c6e983.csv)
+Choropleth 具体 API 文档移步 [L7Plot 官网](https://l7plot.antv.vision/zh/docs/api/plots/choropleth)。

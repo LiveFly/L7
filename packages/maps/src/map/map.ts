@@ -7,7 +7,6 @@ import {
   ICoordinateSystemService,
   IGlobalConfigService,
   ILngLat,
-  ILogService,
   IMapConfig,
   IMapService,
   IMercator,
@@ -19,10 +18,11 @@ import {
   TYPES,
 } from '@antv/l7-core';
 import { Map } from '@antv/l7-map';
-import { DOM } from '@antv/l7-utils';
-import { mat4, vec2, vec3 } from 'gl-matrix';
+import { $window, DOM } from '@antv/l7-utils';
 import { inject, injectable } from 'inversify';
-
+import 'reflect-metadata';
+import { ISimpleMapCoord, SimpleMapCoord } from '../simpleMapCoord';
+import { Version } from '../version';
 import Viewport from './Viewport';
 const EventMap: {
   [key: string]: any;
@@ -40,7 +40,11 @@ const LNGLAT_OFFSET_ZOOM_THRESHOLD = 12;
  */
 @injectable()
 export default class L7MapService implements IMapService<Map> {
+  public version: string = Version.L7MAP;
   public map: Map;
+  public simpleMapCoord: ISimpleMapCoord = new SimpleMapCoord();
+  // 背景色
+  public bgColor: string = 'rgba(0.0, 0.0, 0.0, 0.0)';
 
   @inject(TYPES.MapConfig)
   private readonly config: Partial<IMapConfig>;
@@ -48,8 +52,6 @@ export default class L7MapService implements IMapService<Map> {
   @inject(TYPES.IGlobalConfigService)
   private readonly configService: IGlobalConfigService;
 
-  @inject(TYPES.ILogService)
-  private readonly logger: ILogService;
   @inject(TYPES.ICoordinateSystemService)
   private readonly coordinateSystemService: ICoordinateSystemService;
 
@@ -59,6 +61,9 @@ export default class L7MapService implements IMapService<Map> {
   private markerContainer: HTMLElement;
   private cameraChangedCallback: (viewport: IViewport) => void;
   private $mapContainer: HTMLElement | null;
+  public setBgColor(color: string) {
+    this.bgColor = color;
+  }
 
   // init
   public addMarkerContainer(): void {
@@ -82,6 +87,7 @@ export default class L7MapService implements IMapService<Map> {
   }
   public off(type: string, handle: (...args: any[]) => void): void {
     this.map.off(EventMap[type] || type, handle);
+    this.eventEmitter.off(type, handle);
   }
 
   public getContainer(): HTMLElement | null {
@@ -93,6 +99,9 @@ export default class L7MapService implements IMapService<Map> {
   }
 
   public getSize(): [number, number] {
+    if (this.version === Version.SIMPLE) {
+      return this.simpleMapCoord.getSize();
+    }
     const size = this.map.transform;
     return [size.width, size.height];
   }
@@ -156,8 +165,8 @@ export default class L7MapService implements IMapService<Map> {
     this.map.panTo(p);
   }
 
-  public panBy(pixel: [number, number]): void {
-    this.panTo(pixel);
+  public panBy(x: number = 0, y: number = 0): void {
+    this.panTo([x, y]);
   }
 
   public fitBounds(bound: Bounds, fitBoundsOptions?: any): void {
@@ -253,10 +262,28 @@ export default class L7MapService implements IMapService<Map> {
       style = 'light',
       rotation = 0,
       mapInstance,
+      version = 'L7MAP',
+      mapSize = 10000,
       ...rest
     } = this.config;
 
     this.viewport = new Viewport();
+
+    this.version = version;
+    this.simpleMapCoord.setSize(mapSize);
+    // console.log('this.config.center', this.config.center)
+    if (version === Version.SIMPLE && rest.center) {
+      rest.center = this.simpleMapCoord.unproject(
+        rest.center as [number, number],
+      );
+    }
+    // console.log(this.simpleMapCoord.project(this.config.center as [number, number]))
+    // console.log(this.simpleMapCoord.unproject([500, 500]))
+    // console.log(this.simpleMapCoord.project([0, 0]))
+    // console.log(this.simpleMapCoord.unproject([5000, 5000]))
+
+    // console.log(this.simpleMapCoord.unproject([200, 200]))
+    // console.log(this.simpleMapCoord.unproject([1000, 1000]))
 
     if (mapInstance) {
       // @ts-ignore
@@ -272,11 +299,71 @@ export default class L7MapService implements IMapService<Map> {
         ...rest,
       });
     }
+
     this.map.on('load', this.handleCameraChanged);
     this.map.on('move', this.handleCameraChanged);
 
     // 不同于高德地图，需要手动触发首次渲染
     this.handleCameraChanged();
+  }
+
+  // 初始化小程序地图
+  public async initMiniMap(): Promise<void> {
+    const {
+      id = 'map',
+      attributionControl = false,
+      style = 'light',
+      rotation = 0,
+      mapInstance,
+      canvas = null,
+      hasBaseMap = false,
+      ...rest
+    } = this.config;
+
+    this.viewport = new Viewport();
+
+    this.$mapContainer = canvas;
+
+    this.map = new Map({
+      container: this.$mapContainer as HTMLElement,
+      style: this.getMapStyle(style),
+      bearing: rotation,
+      // @ts-ignore
+      canvas,
+      ...rest,
+    });
+
+    if (!hasBaseMap) {
+      // 没有地图底图的模式
+      this.map.on('load', this.handleCameraChanged);
+      this.map.on('move', this.handleCameraChanged);
+
+      // 不同于高德地图，需要手动触发首次渲染
+      this.handleCameraChanged();
+    } else {
+      // 存在地图底图的模式（ L7Mini ）
+      const center = this.map.getCenter();
+      // 不同于高德地图，需要手动触发首次渲染
+      this.handleMiniCameraChanged(
+        center.lng,
+        center.lat,
+        this.map.getZoom(),
+        this.map.getBearing(),
+        this.map.getPitch(),
+      );
+      $window.document.addEventListener('mapCameaParams', (event: any) => {
+        const {
+          e: { longitude, latitude, scale, bearing, pitch },
+        } = event;
+        this.handleMiniCameraChanged(
+          longitude,
+          latitude,
+          scale - 1.25,
+          bearing,
+          pitch,
+        );
+      });
+    }
   }
 
   public destroy() {
@@ -309,9 +396,49 @@ export default class L7MapService implements IMapService<Map> {
     this.cameraChangedCallback = callback;
   }
 
+  // TODO: 处理小程序中有底图模式下的相机跟新
+  private handleMiniCameraChanged = (
+    lng: number,
+    lat: number,
+    zoom: number,
+    bearing: number,
+    pitch: number,
+  ) => {
+    const { offsetCoordinate = true } = this.config;
+
+    // resync
+    this.viewport.syncWithMapCamera({
+      // bearing: this.map.getBearing(),
+      bearing,
+      center: [lng, lat],
+      viewportHeight: this.map.transform.height,
+      // pitch: this.map.getPitch(),
+      pitch,
+      viewportWidth: this.map.transform.width,
+      zoom,
+      // mapbox 中固定相机高度为 viewport 高度的 1.5 倍
+      cameraHeight: 0,
+    });
+    // set coordinate system
+    if (
+      this.viewport.getZoom() > LNGLAT_OFFSET_ZOOM_THRESHOLD &&
+      offsetCoordinate
+    ) {
+      this.coordinateSystemService.setCoordinateSystem(
+        CoordinateSystem.LNGLAT_OFFSET,
+      );
+    } else {
+      this.coordinateSystemService.setCoordinateSystem(CoordinateSystem.LNGLAT);
+    }
+
+    this.cameraChangedCallback(this.viewport);
+  };
+
   private handleCameraChanged = () => {
     const { lat, lng } = this.map.getCenter();
-
+    const { offsetCoordinate = true } = this.config;
+    // Tip: 统一触发地图变化事件
+    this.emit('mapchange');
     // resync
     this.viewport.syncWithMapCamera({
       bearing: this.map.getBearing(),
@@ -324,7 +451,10 @@ export default class L7MapService implements IMapService<Map> {
       cameraHeight: 0,
     });
     // set coordinate system
-    if (this.viewport.getZoom() > LNGLAT_OFFSET_ZOOM_THRESHOLD) {
+    if (
+      this.viewport.getZoom() > LNGLAT_OFFSET_ZOOM_THRESHOLD &&
+      offsetCoordinate
+    ) {
       this.coordinateSystemService.setCoordinateSystem(
         CoordinateSystem.LNGLAT_OFFSET,
       );

@@ -7,7 +7,6 @@ import {
   ICoordinateSystemService,
   IGlobalConfigService,
   ILngLat,
-  ILogService,
   IMapConfig,
   IMapService,
   IMercator,
@@ -22,10 +21,11 @@ import { DOM } from '@antv/l7-utils';
 import { mat4, vec2, vec3 } from 'gl-matrix';
 import { inject, injectable } from 'inversify';
 import mapboxgl, { IControl, Map } from 'mapbox-gl';
-
 // tslint:disable-next-line:no-submodule-imports
 import 'mapbox-gl/dist/mapbox-gl.css';
+import 'reflect-metadata';
 import { IMapboxInstance } from '../../typings/index';
+import { Version } from '../version';
 import Viewport from './Viewport';
 window.mapboxgl = mapboxgl;
 const EventMap: {
@@ -36,18 +36,24 @@ const EventMap: {
   zoomchange: 'zoom',
   dragging: 'drag',
 };
+import { ISimpleMapCoord, SimpleMapCoord } from '../simpleMapCoord';
 import { MapTheme } from './theme';
 let mapdivCount = 0;
 const LNGLAT_OFFSET_ZOOM_THRESHOLD = 12;
 const MAPBOX_API_KEY =
-  'pk.eyJ1IjoibHp4dWUiLCJhIjoiYnhfTURyRSJ9.Ugm314vAKPHBzcPmY1p4KQ';
+  'pk.eyJ1IjoibHp4dWUiLCJhIjoiY2tvaWZuM2s4MWZuYjJ1dHI5ZGduYTlrdiJ9.DQCfMRbZzx0VSwecQ69McA';
 /**
  * AMapService
  */
 @injectable()
 export default class MapboxService
   implements IMapService<Map & IMapboxInstance> {
+  public version: string = Version.MAPBOX;
   public map: Map & IMapboxInstance;
+  public simpleMapCoord: ISimpleMapCoord = new SimpleMapCoord();
+
+  // 背景色
+  public bgColor: string = 'rgba(0.0, 0.0, 0.0, 0.0)';
 
   @inject(TYPES.MapConfig)
   private readonly config: Partial<IMapConfig>;
@@ -55,8 +61,6 @@ export default class MapboxService
   @inject(TYPES.IGlobalConfigService)
   private readonly configService: IGlobalConfigService;
 
-  @inject(TYPES.ILogService)
-  private readonly logger: ILogService;
   @inject(TYPES.ICoordinateSystemService)
   private readonly coordinateSystemService: ICoordinateSystemService;
 
@@ -66,6 +70,9 @@ export default class MapboxService
   private markerContainer: HTMLElement;
   private cameraChangedCallback: (viewport: IViewport) => void;
   private $mapContainer: HTMLElement | null;
+  public setBgColor(color: string) {
+    this.bgColor = color;
+  }
 
   // init
   public addMarkerContainer(): void {
@@ -89,6 +96,7 @@ export default class MapboxService
   }
   public off(type: string, handle: (...args: any[]) => void): void {
     this.map.off(EventMap[type] || type, handle);
+    this.eventEmitter.off(type, handle);
   }
 
   public getContainer(): HTMLElement | null {
@@ -163,8 +171,8 @@ export default class MapboxService
     this.map.panTo(p);
   }
 
-  public panBy(pixel: [number, number]): void {
-    this.panTo(pixel);
+  public panBy(x: number, y: number): void {
+    this.panTo([x, y]);
   }
 
   public fitBounds(bound: Bounds, fitBoundsOptions?: unknown): void {
@@ -237,6 +245,21 @@ export default class MapboxService
   public lngLatToContainer(lnglat: [number, number]): IPoint {
     return this.map.project(lnglat);
   }
+
+  /**
+   * 将经纬度转成墨卡托坐标
+   * @param lnglat
+   * @returns
+   */
+  public lngLatToCoord(
+    lnglat: [number, number],
+    origin: IMercator = { x: 0, y: 0, z: 0 },
+  ) {
+    // @ts-ignore
+    const { x, y } = this.lngLatToMercator(lnglat, 0);
+    return [x - origin.x, y - origin.y] as [number, number];
+  }
+
   public lngLatToMercator(
     lnglat: [number, number],
     altitude: number,
@@ -307,7 +330,7 @@ export default class MapboxService
     // 判断全局 mapboxgl 对象的加载
     if (!mapInstance && !window.mapboxgl) {
       // 用户有时传递进来的实例是继承于 mapbox 实例化的，不一定是 mapboxgl 对象。
-      this.logger.error(this.configService.getSceneWarninfo('SDK'));
+      console.error(this.configService.getSceneWarninfo('SDK'));
     }
 
     if (
@@ -316,7 +339,7 @@ export default class MapboxService
       !window.mapboxgl.accessToken &&
       !mapInstance // 如果用户传递了 mapInstance，应该不去干预实例的 accessToken。
     ) {
-      this.logger.warn(this.configService.getSceneWarninfo('MapToken'));
+      console.warn(this.configService.getSceneWarninfo('MapToken'));
     }
 
     // 判断是否设置了 accessToken
@@ -348,6 +371,9 @@ export default class MapboxService
   }
 
   public destroy() {
+    // TODO: 销毁地图可视化层的容器
+    this.$mapContainer?.parentNode?.removeChild(this.$mapContainer);
+
     this.eventEmitter.removeAllListeners();
     if (this.map) {
       this.map.remove();
@@ -365,6 +391,33 @@ export default class MapboxService
     return this.$mapContainer;
   }
 
+  public meterToCoord(center: [number, number], outer: [number, number]) {
+    // 统一根据经纬度来转化
+    // Tip: 实际米距离 unit meter
+    const centerLnglat = new mapboxgl.LngLat(center[0], center[1]);
+
+    const outerLnglat = new mapboxgl.LngLat(outer[0], outer[1]);
+    const meterDis = centerLnglat.distanceTo(outerLnglat);
+
+    // Tip: 三维世界坐标距离
+
+    const centerMercator = mapboxgl.MercatorCoordinate.fromLngLat({
+      lng: center[0],
+      lat: center[1],
+    });
+    const outerMercator = mapboxgl.MercatorCoordinate.fromLngLat({
+      lng: outer[0],
+      lat: outer[1],
+    });
+    const { x: x1, y: y1 } = centerMercator;
+    const { x: x2, y: y2 } = outerMercator;
+    // Math.pow(2, 22) 4194304
+    const coordDis =
+      Math.sqrt(Math.pow(x1 - x2, 2) + Math.pow(y1 - y2, 2)) * 4194304 * 2;
+
+    return coordDis / meterDis;
+  }
+
   public exportMap(type: 'jpg' | 'png'): string {
     const renderCanvas = this.map.getCanvas();
     const layersPng =
@@ -380,7 +433,8 @@ export default class MapboxService
   private handleCameraChanged = () => {
     // @see https://github.com/mapbox/mapbox-gl-js/issues/2572
     const { lat, lng } = this.map.getCenter().wrap();
-
+    // Tip: 统一触发地图变化事件
+    this.emit('mapchange');
     // resync
     this.viewport.syncWithMapCamera({
       bearing: this.map.getBearing(),
@@ -393,8 +447,10 @@ export default class MapboxService
       cameraHeight: 0,
     });
 
+    const { offsetZoom = LNGLAT_OFFSET_ZOOM_THRESHOLD } = this.config;
+
     // set coordinate system
-    if (this.viewport.getZoom() > LNGLAT_OFFSET_ZOOM_THRESHOLD) {
+    if (this.viewport.getZoom() > offsetZoom) {
       this.coordinateSystemService.setCoordinateSystem(
         CoordinateSystem.LNGLAT_OFFSET,
       );

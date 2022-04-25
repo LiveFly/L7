@@ -20,7 +20,6 @@ import { IInteractionService } from './services/interaction/IInteractionService'
 import { IPickingService } from './services/interaction/IPickingService';
 import { ILayerService } from './services/layer/ILayerService';
 import { IStyleAttributeService } from './services/layer/IStyleAttributeService';
-import { ILogService } from './services/log/ILogService';
 import { ISceneService } from './services/scene/ISceneService';
 import { IShaderModuleService } from './services/shader/IShaderModuleService';
 
@@ -37,7 +36,6 @@ import InteractionService from './services/interaction/InteractionService';
 import PickingService from './services/interaction/PickingService';
 import LayerService from './services/layer/LayerService';
 import StyleAttributeService from './services/layer/StyleAttributeService';
-import LogService from './services/log/LogService';
 import SceneService from './services/scene/SceneService';
 import ShaderModuleService from './services/shader/ShaderModuleService';
 
@@ -53,6 +51,7 @@ import {
 import ClearPass from './services/renderer/passes/ClearPass';
 import MultiPassRenderer from './services/renderer/passes/MultiPassRenderer';
 import PixelPickingPass from './services/renderer/passes/PixelPickingPass';
+import BloomPass from './services/renderer/passes/post-processing/BloomPass';
 import BlurHPass from './services/renderer/passes/post-processing/BlurHPass';
 import BlurVPass from './services/renderer/passes/post-processing/BlurVPass';
 import ColorHalfTonePass from './services/renderer/passes/post-processing/ColorHalfTonePass';
@@ -75,23 +74,6 @@ container
   .bind<IGlobalConfigService>(TYPES.IGlobalConfigService)
   .to(GlobalConfigService)
   .inSingletonScope();
-// container
-//   .bind<IIconService>(TYPES.IIconService)
-//   .to(IconService)
-//   .inSingletonScope();
-container
-  .bind<IShaderModuleService>(TYPES.IShaderModuleService)
-  .to(ShaderModuleService)
-  .inSingletonScope();
-container
-  .bind<ILogService>(TYPES.ILogService)
-  .to(LogService)
-  .inSingletonScope();
-// container
-//   .bind<IFontService>(TYPES.IFontService)
-//   .to(FontService)
-//   .inSingletonScope();
-
 // @see https://github.com/inversify/InversifyJS/blob/master/wiki/inheritance.md#what-can-i-do-when-my-base-class-is-provided-by-a-third-party-module
 decorate(injectable(), EventEmitter);
 container.bind(TYPES.IEventEmitter).to(EventEmitter);
@@ -162,6 +144,10 @@ export function createSceneContainer() {
   sceneContainer
     .bind<string>(TYPES.SceneID)
     .toConstantValue(`${sceneIdCounter++}`);
+  sceneContainer
+    .bind<IShaderModuleService>(TYPES.IShaderModuleService)
+    .to(ShaderModuleService)
+    .inSingletonScope();
   sceneContainer
     .bind<ILayerService>(TYPES.ILayerService)
     .to(LayerService)
@@ -236,6 +222,10 @@ export function createSceneContainer() {
     .bind<IPostProcessingPass<unknown>>(TYPES.IPostProcessingPass)
     .to(CopyPass)
     .whenTargetNamed('copy');
+  sceneContainer
+    .bind<IPostProcessingPass<unknown>>(TYPES.IPostProcessingPass)
+    .to(BloomPass)
+    .whenTargetNamed('bloom');
   sceneContainer
     .bind<IPostProcessingPass<unknown>>(TYPES.IPostProcessingPass)
     .to(BlurHPass)

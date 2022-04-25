@@ -1,10 +1,11 @@
+import { $window } from '@antv/l7-utils';
 import { inject, injectable } from 'inversify';
+import 'reflect-metadata';
 import blendFS from '../../../shaders/post-processing/blend.glsl';
 import copyFS from '../../../shaders/post-processing/copy.glsl';
 import quadVS from '../../../shaders/post-processing/quad.glsl';
 import { TYPES } from '../../../types';
 import { ILayer } from '../../layer/ILayerService';
-import { ILogService } from '../../log/ILogService';
 import { IShaderModuleService } from '../../shader/IShaderModuleService';
 import { gl } from '../gl';
 import { IFramebuffer } from '../IFramebuffer';
@@ -41,9 +42,6 @@ export default class TAAPass<InitializationOptions = {}> extends BaseNormalPass<
 > {
   @inject(TYPES.IShaderModuleService)
   protected readonly shaderModuleService: IShaderModuleService;
-
-  @inject(TYPES.ILogService)
-  protected readonly logger: ILogService;
 
   /**
    * 低差异序列
@@ -179,21 +177,20 @@ export default class TAAPass<InitializationOptions = {}> extends BaseNormalPass<
       if (!this.isFinished()) {
         this.doRender(layer);
 
-        requestAnimationFrame(() => {
+        $window.requestAnimationFrame(() => {
           accumulate(id);
         });
       }
     };
 
     this.accumulatingId = accumulatingId++;
-    this.timer = window.setTimeout(() => {
+    // @ts-ignore
+    this.timer = $window.setTimeout(() => {
       accumulate(this.accumulatingId);
     }, 50);
   }
 
   private doRender(layer: ILayer) {
-    this.logger.debug(`accumulatingId: ${this.accumulatingId}`);
-
     const { clear, getViewportSize, useFramebuffer } = this.rendererService;
     const { width, height } = getViewportSize();
     const { jitterScale = 1 } = layer.getLayerConfig();
@@ -295,7 +292,7 @@ export default class TAAPass<InitializationOptions = {}> extends BaseNormalPass<
 
   private stopAccumulating() {
     this.accumulatingId = 0;
-    window.clearTimeout(this.timer);
+    $window.clearTimeout(this.timer);
   }
 
   private createTriangleModel(

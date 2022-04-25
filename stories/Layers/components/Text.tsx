@@ -39,7 +39,7 @@ export default class TextLayerDemo extends React.Component {
           y: 'w',
         },
       })
-      .shape('s', 'text')
+      .shape(['s', 'm'], (...args) => args.map((i) => `${i}\n`).join(''))
       // .shape('circle')
       .size(18)
       .filter('t', (t) => {
@@ -65,6 +65,7 @@ export default class TextLayerDemo extends React.Component {
     const styleOptions = {
       field: 'w',
       strokeWidth: 0,
+      fontWeight: 500,
       stroke: '#fff',
       textAllowOverlap: false,
       opacity: 1,

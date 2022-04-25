@@ -1,12 +1,12 @@
-import { decodePickingColor, encodePickingColor } from '@antv/l7-utils';
+import { decodePickingColor, DOM, encodePickingColor } from '@antv/l7-utils';
 import { inject, injectable } from 'inversify';
+import 'reflect-metadata';
 import { TYPES } from '../../../types';
 import {
   IInteractionTarget,
   InteractionEvent,
 } from '../../interaction/IInteractionService';
 import { ILayer } from '../../layer/ILayerService';
-import { ILogService } from '../../log/ILogService';
 import { ILngLat } from '../../map/IMapService';
 import { gl } from '../gl';
 import { IFramebuffer } from '../IFramebuffer';
@@ -21,9 +21,6 @@ import BaseNormalPass from './BaseNormalPass';
 export default class PixelPickingPass<
   InitializationOptions = {}
 > extends BaseNormalPass<InitializationOptions> {
-  @inject(TYPES.ILogService)
-  protected readonly logger: ILogService;
-
   /**
    * picking framebuffer，供 attributes 颜色编码后输出
    */
@@ -141,8 +138,8 @@ export default class PixelPickingPass<
     const { width, height } = getViewportSize();
     const { enableHighlight, enableSelect } = this.layer.getLayerConfig();
 
-    const xInDevicePixel = x * window.devicePixelRatio;
-    const yInDevicePixel = y * window.devicePixelRatio;
+    const xInDevicePixel = x * DOM.DPR;
+    const yInDevicePixel = y * DOM.DPR;
     if (
       xInDevicePixel > width ||
       xInDevicePixel < 0 ||
@@ -157,7 +154,7 @@ export default class PixelPickingPass<
       pickedColors = readPixels({
         x: Math.round(xInDevicePixel),
         // 视口坐标系原点在左上，而 WebGL 在左下，需要翻转 Y 轴
-        y: Math.round(height - (y + 1) * window.devicePixelRatio),
+        y: Math.round(height - (y + 1) * DOM.DPR),
         width: 1,
         height: 1,
         data: new Uint8Array(1 * 1 * 4),
@@ -169,7 +166,6 @@ export default class PixelPickingPass<
         pickedColors[1] !== 0 ||
         pickedColors[2] !== 0
       ) {
-        this.logger.debug('picked');
         const pickedFeatureIdx = decodePickingColor(pickedColors);
         const rawFeature = this.layer
           .getSource()
@@ -247,12 +243,14 @@ export default class PixelPickingPass<
    * });
    */
   private highlightPickedFeature(pickedColors: Uint8Array | undefined) {
+    // @ts-ignore
     const [r, g, b] = pickedColors;
     this.layer.hooks.beforeHighlight.call([r, g, b]);
     this.layerService.renderLayers();
   }
 
   private selectFeature(pickedColors: Uint8Array | undefined) {
+    // @ts-ignore
     const [r, g, b] = pickedColors;
     this.layer.hooks.beforeSelect.call([r, g, b]);
     this.layerService.renderLayers();

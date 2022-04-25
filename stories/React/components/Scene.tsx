@@ -1,10 +1,12 @@
 import {
   AMapScene,
+  AMapSceneV2,
   LayerContext,
+  LayerEvent,
   LineLayer,
-  PolygonLayer,
   MapboxScene,
   Marker,
+  PolygonLayer,
   Popup,
   SceneContext,
   SceneEvent,
@@ -23,12 +25,20 @@ export default React.memo(function Map() {
     };
     fetchData();
   }, []);
-  const popupClick = () => {
+  const popupClick = (e: any) => {
+    console.log(e);
+    // e.stopPropagation();
     alert('11333');
+  };
+
+  const markerClick = (e: any) => {
+    console.log(e);
+    // e.stopPropagation();
+    alert('marker');
   };
   return (
     <>
-      <AMapScene
+      <AMapSceneV2
         map={{
           center: [110.19382669582967, 50.258134],
           pitch: 0,
@@ -43,16 +53,29 @@ export default React.memo(function Map() {
           bottom: 0,
         }}
       >
-        <Popup
+        {/* <Popup
           option={{
             closeOnClick: false,
+            stopPropagation: false,
           }}
-          lnglat={[110.1938, 30.25] as number[]}
+          lnglat={[115, 30.25] as number[]}
         >
           <p onClick={popupClick}>122224</p>
-        </Popup>
-        <Marker lnglat={[100.1938, 30.25] as number[]}>
-          <p onClick={popupClick}>tes</p>
+        </Popup> */}
+        <Marker lnglat={[100.1938, 27.25] as number[]}>
+          <div
+            style={{
+              border: '1px solid #fff',
+              background: '#FFF',
+              fontSize: '24px',
+              width: '50px',
+              height: '150px',
+            }}
+            // onClick={markerClick}
+            onTouchStart={markerClick}
+          >
+            1
+          </div>
         </Marker>
         <PolygonLayer
           key={'2'}
@@ -63,7 +86,15 @@ export default React.memo(function Map() {
             values: 1,
           }}
           color={{
-            values: '#fff',
+            field: 'name',
+            values: [
+              '#2E8AE6',
+              '#69D1AB',
+              '#DAF291',
+              '#FFD591',
+              '#FF7A45',
+              '#CF1D49',
+            ],
           }}
           shape={{
             values: 'fill',
@@ -72,14 +103,14 @@ export default React.memo(function Map() {
             opacity: 1,
           }}
         >
-          <LayerContext.Consumer>
-            {(layer) => {
-              console.log(layer);
-              return null;
+          <LayerEvent
+            type="click"
+            handler={(e) => {
+              console.log('LayerEvent', e);
             }}
-          </LayerContext.Consumer>
+          />
         </PolygonLayer>
-      </AMapScene>
+      </AMapSceneV2>
     </>
   );
 });

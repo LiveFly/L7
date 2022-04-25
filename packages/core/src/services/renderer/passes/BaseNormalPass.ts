@@ -1,14 +1,13 @@
 import { inject, injectable } from 'inversify';
-import {
-  IMapService,
-  IRendererService,
-  IShaderModuleService,
-} from '../../../index';
+import 'reflect-metadata';
 import { TYPES } from '../../../types';
 import { ICameraService } from '../../camera/ICameraService';
 import { IInteractionService } from '../../interaction/IInteractionService';
 import { ILayer, ILayerService } from '../../layer/ILayerService';
+import { IMapService } from '../../map/IMapService';
+import { IShaderModuleService } from '../../shader/IShaderModuleService';
 import { IPass, PassType } from '../IMultiPassRenderer';
+import { IRendererService } from '../IRendererService';
 
 /**
  * 常规 Pass 基类
@@ -16,8 +15,8 @@ import { IPass, PassType } from '../IMultiPassRenderer';
 @injectable()
 export default class BaseNormalPass<InitializationOptions = {}>
   implements IPass<InitializationOptions> {
-  @inject(TYPES.IShaderModuleService)
-  protected readonly shaderModuleService: IShaderModuleService;
+  // @inject(TYPES.IShaderModuleService)
+  protected shaderModuleService: IShaderModuleService;
 
   protected rendererService: IRendererService;
   protected cameraService: ICameraService;
@@ -50,6 +49,9 @@ export default class BaseNormalPass<InitializationOptions = {}>
     this.layerService = layer
       .getContainer()
       .get<ILayerService>(TYPES.ILayerService);
+    this.shaderModuleService = layer
+      .getContainer()
+      .get<IShaderModuleService>(TYPES.IShaderModuleService);
   }
 
   public render(layer: ILayer) {

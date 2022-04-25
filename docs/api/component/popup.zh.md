@@ -12,15 +12,17 @@ order: 0
 Popup
 
 ```javascript
+const option = {};
 const popup = new L7.Popup(option);
 ```
 
-#### option
+### option
 
-- closeButton
-- closeOnClick
-- maxWidth
-- anchor
+- closeButton 是否显示关闭按钮，布尔值，默认为 true。
+- closeButtonOffsets 显示关闭按钮时生效，[number, number]，默认为 [0, 0]，以右上角为起始点。
+- closeOnClick 是否在点击地图的时候关闭弹框，布尔值，默认为 true
+- maxWidth 弹框最宽值，默认为 240px
+- anchor 弹框锚点，默认值为 bottom，可选值有 center、top、top-left、left、bottom-left、bottom、bottom-right、right、top-right
 
 #### 添加到地图
 
@@ -86,6 +88,14 @@ popup.setHTML(html);
 popup.setText('hello world');
 ```
 
+#### setMaxWidth
+
+设置 popup 最大宽度
+
+```javascript
+popup.setMaxWidth('300px');
+```
+
 #### open
 
 显示 popup
@@ -136,5 +146,5 @@ popup.on('close', () => {});
 
 ## demo 地址
 
-[demo1](../../../examples/point/column)
-[demo2](../../../examples/line/path)
+[demo1](../../../examples/point/column#column_linear)
+[demo2](../../../examples/line/path#bus_light)

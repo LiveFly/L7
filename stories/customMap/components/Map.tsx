@@ -1,53 +1,64 @@
-// @ts-ignore
-import { Scene } from '@antv/l7';
-import { PolygonLayer } from '@antv/l7-layers';
-import { Map } from '@antv/l7-maps';
+// @ts-nocheck
+import { Scene, PolygonLayer, PointLayer, Map } from '@antv/l7-mini';
+// import { Scene } from '@antv/l7';
+// import { PolygonLayer, PointLayer } from '@antv/l7-layers';
+import { GaodeMap, Mapbox } from '@antv/l7-maps';
 import * as React from 'react';
 
 export default class ScaleComponent extends React.Component {
-  private scene: Scene;
-
-  public componentWillUnmount() {
-    this.scene.destroy();
-  }
-
   public async componentDidMount() {
     const scene = new Scene({
       id: 'map',
       map: new Map({
-        hash: true,
-        center: [110.19382669582967, 30.258134],
+        center: [120, 30],
+        // center: [5000, 5000],
         pitch: 0,
-        zoom: 2,
+        zoom: 1,
+        // version: 'SIMPLE',
+        // zoom: 13,
+        // zoom: 10,
       }),
     });
-    fetch(
-      'https://gw.alipayobjects.com/os/basement_prod/d2e0e930-fd44-4fca-8872-c1037b0fee7b.json',
-    )
-      .then((res) => res.json())
-      .then((data) => {
-        const layer = new PolygonLayer({
-          name: '01',
-        });
+    // scene.setBgColor('#000');
+    const data = [
+      // { x: 5000, y: 5000 },
 
-        layer
-          .source(data)
-          .size('name', [0, 10000, 50000, 30000, 100000])
-          .color('name', [
-            '#2E8AE6',
-            '#69D1AB',
-            '#DAF291',
-            '#FFD591',
-            '#FF7A45',
-            '#CF1D49',
-          ])
-          .shape('fill')
-          .select(true)
-          .style({
-            opacity: 1.0,
-          });
-        scene.addLayer(layer);
-      });
+      { lng: 120, lat: 30 },
+
+      // { lng: 0, lat: 0 },
+      // { lng: 0, lat: 85.05112 },
+      // { lng: 0, lat: -85.05112 },
+
+      // { lng: -90, lat: 0 },
+      // { lng: -180, lat: 0 },
+      // { lng: 90, lat: 0 },
+      // { lng: 180, lat: 0 },
+
+      // { lng: -90, lat: 85.05112 },
+      // { lng: -180, lat: 85.05112 },
+      // { lng: 90, lat: 85.05112 },
+      // { lng: 180, lat: 85.05112 },
+
+      // { lng: -90, lat: -85.05112 },
+      // { lng: -180, lat: -85.05112 },
+      // { lng: 90, lat: -85.05112 },
+      // { lng: 180, lat: -85.05112 },
+    ];
+    const layer = new PointLayer()
+      .source(data, {
+        parser: {
+          type: 'json',
+          x: 'lng',
+          y: 'lat',
+        },
+      })
+      .shape('circle')
+      .size(20)
+      .color('#f00');
+
+    scene.on('loaded', () => {
+      scene.addLayer(layer);
+    });
   }
 
   public render() {
@@ -61,7 +72,7 @@ export default class ScaleComponent extends React.Component {
           right: 0,
           bottom: 0,
         }}
-      />
+      ></div>
     );
   }
 }

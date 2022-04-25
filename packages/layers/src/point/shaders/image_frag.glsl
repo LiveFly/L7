@@ -3,28 +3,37 @@ uniform sampler2D u_texture;
 varying vec4 v_color;
 varying vec2 v_uv;
 uniform vec2 u_textSize;
-uniform float u_stroke_width : 1;
-uniform vec4 u_stroke_color : [1, 1, 1, 1];
-uniform float u_stroke_opacity : 1;
 uniform float u_opacity : 1;
 
-varying float v_size;
+varying mat4 styleMappingMat; // 传递从片元中传递的映射数据
+
 #pragma include "picking"
+
 void main(){
-vec2 pos= v_uv / u_textSize + gl_PointCoord / u_textSize * 64.;
-vec2 fragmentPosition = 2.0*gl_PointCoord - 1.0;
-float distance = length(fragmentPosition);
-float distanceSqrd = distance * distance;
-float radius = 1.;
-float r = 1.0 - smoothstep(radius-(radius*0.01),
-                         radius+(radius*0.01),
-                         distanceSqrd);
-  vec4 textureColor=texture2D(u_texture,pos);
-  if(all(lessThan(v_color, vec4(1.0+0.00001))) && all(greaterThan(v_color, vec4(1.0-0.00001))) || v_color==vec4(1.0)){
-        gl_FragColor= vec4(textureColor.xyz, textureColor.w);
-  }else {
-        gl_FragColor= step(0.01, textureColor.z) * v_color;
-  }
-  gl_FragColor.a =gl_FragColor.a * u_opacity;
-  gl_FragColor = filterColor(gl_FragColor);
+      float opacity = styleMappingMat[0][0];
+      float size = styleMappingMat[1][0];
+      vec2 pos = v_uv / u_textSize + gl_PointCoord / u_textSize * 64.;
+      vec4 textureColor;
+
+      // Y = 0.299R + 0.587G + 0.114B // 亮度提取
+     
+      textureColor = texture2D(u_texture, pos);
+
+      // Tip: 去除边缘部分 mipmap 导致的混合变暗
+      float fragmengTocenter = distance(vec2(0.5), gl_PointCoord);
+      if(fragmengTocenter >= 0.5) {
+            float luma = 0.299 * textureColor.r + 0.587 * textureColor.g + 0.114 * textureColor.b;
+            textureColor.a *= luma;
+      }
+      
+      
+
+      if(all(lessThan(v_color, vec4(1.0+0.00001))) && all(greaterThan(v_color, vec4(1.0-0.00001))) || v_color==vec4(1.0)){
+            gl_FragColor= textureColor;
+      }else {
+            gl_FragColor= step(0.01, textureColor.z) * v_color;
+      }
+
+      gl_FragColor.a = gl_FragColor.a * opacity;
+      gl_FragColor = filterColor(gl_FragColor);
 }

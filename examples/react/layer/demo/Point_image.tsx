@@ -42,20 +42,22 @@ const World = React.memo(function Map() {
           options={{
             autoFit: true,
           }}
+         
           source={{
             data,
+             // @ts-ignore
             parser: {
               type: 'json',
               x: 'longitude',
               y: 'latitude',
-            },
+            } 
           }}
           shape={{
             field: 'name',
             values: ['00', '01', '02'],
           }}
           size={{
-            values: 10,
+            values: 20,
           }}
           style={{
             opacity: 1,

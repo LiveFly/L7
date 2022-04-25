@@ -1,4 +1,5 @@
 import { injectable } from 'inversify';
+import 'reflect-metadata';
 import { ILayer } from '../../layer/ILayerService';
 import { PassType } from '../IMultiPassRenderer';
 import BaseNormalPass from './BaseNormalPass';
@@ -24,18 +25,24 @@ export default class RenderPass<
 
   public render(layer: ILayer) {
     const { useFramebuffer, clear } = this.rendererService;
-    // const readFBO = layer.multiPassRenderer.getPostProcessor().getReadFBO();
-    useFramebuffer(null, () => {
+    const readFBO = layer.multiPassRenderer.getPostProcessor().getReadFBO();
+    useFramebuffer(readFBO, () => {
       clear({
         color: [0, 0, 0, 0],
         depth: 1,
         stencil: 0,
-        // framebuffer: readFBO,
+        framebuffer: readFBO,
       });
-
       // render to post processor
       layer.multiPassRenderer.setRenderFlag(false);
-      layer.render();
+      // layer.render();
+
+      layer.models.forEach((model) => {
+        model.draw({
+          uniforms: layer.layerModel.getUninforms(),
+        });
+      });
+
       layer.multiPassRenderer.setRenderFlag(true);
     });
   }

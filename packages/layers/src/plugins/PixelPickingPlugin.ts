@@ -13,6 +13,7 @@ import {
   rgb2arr,
 } from '@antv/l7-utils';
 import { injectable } from 'inversify';
+import 'reflect-metadata';
 
 const PickingStage = {
   NONE: 0.0,
@@ -34,7 +35,8 @@ export default class PixelPickingPlugin implements ILayerPlugin {
   ) {
     // TODO: 由于 Shader 目前无法根据是否开启拾取进行内容修改，因此即使不开启也需要生成 a_PickingColor
     layer.hooks.init.tap('PixelPickingPlugin', () => {
-      const { enablePicking } = layer.getLayerConfig();
+      // const { enablePicking, enableMultiPassRenderer } = layer.getLayerConfig();
+      const enablePicking = true;
       styleAttributeService.registerStyleAttribute({
         name: 'pickingColor',
         type: AttributeType.Attribute,
@@ -82,19 +84,37 @@ export default class PixelPickingPlugin implements ILayerPlugin {
     layer.hooks.beforeHighlight.tap(
       'PixelPickingPlugin',
       (pickedColor: number[]) => {
-        const { highlightColor } = layer.getLayerConfig();
+        const { highlightColor, activeMix = 0 } = layer.getLayerConfig();
+        // const {
+        //   highlightColor,
+        //   activeMix = 0,
+        //   enableSelect,
+        // } = layer.getLayerConfig();
         const highlightColorInArray =
           typeof highlightColor === 'string'
             ? rgb2arr(highlightColor)
             : highlightColor || [1, 0, 0, 1];
+
+        // const { selectColor } = layer.getLayerConfig();
+        // const selectColorInArray =
+        //   typeof selectColor === 'string'
+        //     ? rgb2arr(selectColor)
+        //     : selectColor || [1, 0, 0, 1];
         layer.updateLayerConfig({
           pickedFeatureID: decodePickingColor(new Uint8Array(pickedColor)),
         });
+        // const currentSelectedId = layer.getCurrentSelectedId();
         layer.models.forEach((model) =>
           model.addUniforms({
             u_PickingStage: PickingStage.HIGHLIGHT,
             u_PickingColor: pickedColor,
             u_HighlightColor: highlightColorInArray.map((c) => c * 255),
+            u_activeMix: activeMix,
+            // u_CurrentSelectedId: currentSelectedId
+            //   ? encodePickingColor(layer.getCurrentSelectedId()!)
+            //   : [0, 0, 0],
+            // u_SelectColor: selectColorInArray.map((c) => c * 255),
+            // u_EnableSelect: +(enableSelect || false),
           }),
         );
       },
@@ -103,7 +123,7 @@ export default class PixelPickingPlugin implements ILayerPlugin {
     layer.hooks.beforeSelect.tap(
       'PixelPickingPlugin',
       (pickedColor: number[]) => {
-        const { selectColor } = layer.getLayerConfig();
+        const { selectColor, selectMix = 0 } = layer.getLayerConfig();
         const highlightColorInArray =
           typeof selectColor === 'string'
             ? rgb2arr(selectColor)
@@ -116,6 +136,10 @@ export default class PixelPickingPlugin implements ILayerPlugin {
             u_PickingStage: PickingStage.HIGHLIGHT,
             u_PickingColor: pickedColor,
             u_HighlightColor: highlightColorInArray.map((c) => c * 255),
+            u_activeMix: selectMix,
+            u_CurrentSelectedId: pickedColor,
+            u_SelectColor: highlightColorInArray.map((c) => c * 255),
+            u_EnableSelect: 1,
           }),
         );
       },

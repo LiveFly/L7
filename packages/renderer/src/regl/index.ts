@@ -10,6 +10,7 @@ import {
   IClearOptions,
   IElements,
   IElementsInitializationOptions,
+  IExtensions,
   IFramebuffer,
   IFramebufferInitializationOptions,
   IModel,
@@ -20,8 +21,10 @@ import {
   ITexture2D,
   ITexture2DInitializationOptions,
 } from '@antv/l7-core';
+import { isMini } from '@antv/l7-utils';
 import { injectable } from 'inversify';
-import regl from 'regl';
+import regl from 'l7regl';
+import 'reflect-metadata';
 import ReglAttribute from './ReglAttribute';
 import ReglBuffer from './ReglBuffer';
 import ReglElements from './ReglElements';
@@ -34,6 +37,7 @@ import ReglTexture2D from './ReglTexture2D';
  */
 @injectable()
 export default class ReglRendererService implements IRendererService {
+  public extensionObject: IExtensions;
   private gl: regl.Regl;
   private $container: HTMLDivElement | null;
   private canvas: HTMLCanvasElement;
@@ -58,12 +62,14 @@ export default class ReglRendererService implements IRendererService {
           antialias: cfg.antialias,
           premultipliedAlpha: true,
           preserveDrawingBuffer: cfg.preserveDrawingBuffer,
+
+          stencil: cfg.stencil,
         },
         // TODO: use extensions
         extensions: [
           'OES_element_index_uint',
           'OES_standard_derivatives', // wireframe
-          'angle_instanced_arrays', // VSM shadow map
+          'ANGLE_instanced_arrays', // VSM shadow map
         ],
         optionalExtensions: [
           'oes_texture_float_linear',
@@ -77,10 +83,24 @@ export default class ReglRendererService implements IRendererService {
           if (err || !r) {
             reject(err);
           }
+          // @ts-ignore
           resolve(r);
         },
       });
     });
+
+    this.extensionObject = {
+      OES_texture_float: this.testExtension('OES_texture_float'),
+    };
+  }
+
+  public getPointSizeRange() {
+    return this.gl._gl.getParameter(this.gl._gl.ALIASED_POINT_SIZE_RANGE);
+  }
+
+  public testExtension(name: string) {
+    // OES_texture_float
+    return !!this.getGLContext().getExtension(name);
   }
 
   public createModel = (options: IModelInitializationOptions): IModel =>
@@ -171,7 +191,11 @@ export default class ReglRendererService implements IRendererService {
   };
 
   public getContainer = () => {
-    return this.canvas?.parentElement;
+    if (isMini) {
+      return this.canvas;
+    } else {
+      return this.canvas?.parentElement;
+    }
   };
 
   public getCanvas = () => {
@@ -182,6 +206,28 @@ export default class ReglRendererService implements IRendererService {
   public getGLContext = () => {
     return this.gl._gl;
   };
+
+  // TODO: 临时方法
+  public setState() {
+    this.gl({
+      cull: {
+        enable: false,
+        face: 'back',
+      },
+      viewport: {
+        x: 0,
+        y: 0,
+        height: this.width,
+        width: this.height,
+      },
+      blend: {
+        enable: true,
+        equation: 'add',
+      },
+      framebuffer: null,
+    });
+    this.gl._refresh();
+  }
 
   public setBaseState() {
     this.gl({
@@ -217,7 +263,13 @@ export default class ReglRendererService implements IRendererService {
   }
 
   public destroy = () => {
+    // this.canvas = null 清除对 webgl 实例的引用
+    // @ts-ignore
+    this.canvas = null;
     // @see https://github.com/regl-project/regl/blob/gh-pages/API.md#clean-up
     this.gl.destroy();
+
+    // @ts-ignore
+    this.gl = null;
   };
 }

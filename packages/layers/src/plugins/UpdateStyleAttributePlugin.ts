@@ -1,20 +1,17 @@
 import {
   ILayer,
   ILayerPlugin,
-  ILogService,
   IStyleAttributeService,
   TYPES,
 } from '@antv/l7-core';
 import { inject, injectable } from 'inversify';
+import 'reflect-metadata';
 
 /**
  * 在初始化阶段完成属性的注册，以及首次根据 Layer 指定的三角化方法完成 indices 和 attribute 的创建
  */
 @injectable()
 export default class UpdateStyleAttributePlugin implements ILayerPlugin {
-  @inject(TYPES.ILogService)
-  private readonly logger: ILogService;
-
   public apply(
     layer: ILayer,
     {
@@ -47,8 +44,9 @@ export default class UpdateStyleAttributePlugin implements ILayerPlugin {
     const filter = styleAttributeService.getLayerStyleAttribute('filter');
     const shape = styleAttributeService.getLayerStyleAttribute('shape');
     if (
-      (filter && filter.needRegenerateVertices) ||
-      (shape && shape.needRegenerateVertices) // TODO:Shape 更新重新build
+      filter &&
+      filter.needRegenerateVertices // ||
+      // (shape && shape.needRegenerateVertices) // TODO:Shape 更新重新build
     ) {
       layer.layerModelNeedUpdate = true;
       attributes.forEach((attr) => (attr.needRegenerateVertices = false));
@@ -65,9 +63,6 @@ export default class UpdateStyleAttributePlugin implements ILayerPlugin {
           attribute.featureRange.endIndex,
         );
         attribute.needRegenerateVertices = false;
-        this.logger.debug(
-          `regenerate vertex attributes: ${attribute.name} finished`,
-        );
       });
   }
 
@@ -89,7 +84,6 @@ export default class UpdateStyleAttributePlugin implements ILayerPlugin {
           attribute.featureRange.endIndex,
         );
         attribute.needRegenerateVertices = false;
-        this.logger.debug(`init vertex attributes: ${attribute.name} finished`);
       });
   }
 }

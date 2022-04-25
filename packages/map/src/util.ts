@@ -1,3 +1,4 @@
+import { $window, isMini } from '@antv/l7-utils';
 // @ts-ignore
 import UnitBezier from '@mapbox/unitbezier';
 let reducedMotionQuery: MediaQueryList;
@@ -32,12 +33,14 @@ export function bezier(
 export const ease = bezier(0.25, 0.1, 0.25, 1);
 
 export function prefersReducedMotion(): boolean {
-  if (!window.matchMedia) {
+  // @ts-ignore
+  if (isMini || !$window.matchMedia) {
     return false;
   }
   // Lazily initialize media query
   if (reducedMotionQuery == null) {
-    reducedMotionQuery = window.matchMedia('(prefers-reduced-motion: reduce)');
+    // @ts-ignore
+    reducedMotionQuery = $window.matchMedia('(prefers-reduced-motion: reduce)');
   }
   return reducedMotionQuery.matches;
 }
@@ -55,26 +58,29 @@ export function pick(
   return result;
 }
 
-export const now =
-  window.performance && window.performance.now
-    ? window.performance.now.bind(window.performance)
-    : Date.now.bind(Date);
+export const now = isMini
+  ? Date.now.bind(Date)
+  : $window.performance && $window.performance.now
+  ? $window.performance.now.bind($window.performance)
+  : Date.now.bind(Date);
 
 export const raf =
-  window.requestAnimationFrame ||
+  $window.requestAnimationFrame ||
   // @ts-ignore
-  window.mozRequestAnimationFrame ||
-  window.webkitRequestAnimationFrame ||
+  $window.mozRequestAnimationFrame ||
   // @ts-ignore
-  window.msRequestAnimationFrame;
+  $window.webkitRequestAnimationFrame ||
+  // @ts-ignore
+  $window.msRequestAnimationFrame;
 
 export const cancel =
-  window.cancelAnimationFrame ||
+  $window.cancelAnimationFrame ||
   // @ts-ignore
-  window.mozCancelAnimationFrame ||
-  window.webkitCancelAnimationFrame ||
+  $window.mozCancelAnimationFrame ||
   // @ts-ignore
-  window.msCancelAnimationFrame;
+  $window.webkitCancelAnimationFrame ||
+  // @ts-ignore
+  $window.msCancelAnimationFrame;
 
 export function renderframe(
   fn: (paintStartTimestamp: number) => void,

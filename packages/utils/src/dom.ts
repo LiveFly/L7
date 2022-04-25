@@ -1,9 +1,9 @@
-const docStyle = window.document.documentElement.style;
+import { $window, isMini } from './mini-adapter';
 type ELType = HTMLElement | SVGElement;
 export function getContainer(domId: string | HTMLDivElement) {
   let $dom = domId as HTMLDivElement;
   if (typeof domId === 'string') {
-    $dom = document.getElementById(domId) as HTMLDivElement;
+    $dom = $window.document.getElementById(domId) as HTMLDivElement;
   }
   return $dom;
 }
@@ -19,6 +19,7 @@ export function splitWords(str: string) {
 }
 
 function testProp(props: string[]): string {
+  const docStyle = $window?.document?.documentElement?.style;
   if (!docStyle) {
     return props[0];
   }
@@ -35,7 +36,7 @@ export function create(
   className?: string,
   container?: HTMLElement,
 ) {
-  const el = document.createElement(tagName);
+  const el = $window.document.createElement(tagName);
   el.className = className || '';
 
   if (container) {
@@ -109,6 +110,7 @@ export function getClass(el: ELType) {
   // Check if the element is an SVGElementInstance and use the correspondingElement instead
   // (Required for linked SVG elements in IE11.)
   if (el instanceof SVGElement) {
+    // @ts-ignore
     el = el.correspondingElement;
   }
   return el.className.baseVal === undefined
@@ -132,14 +134,14 @@ export function setTransform(el: ELType, value: string) {
 export function triggerResize() {
   if (typeof Event === 'function') {
     // modern browsers
-    window.dispatchEvent(new Event('resize'));
+    $window.dispatchEvent(new Event('resize'));
   } else {
     // for IE and other old browsers
     // causes deprecation warning on modern browsers
-    const evt = window.document.createEvent('UIEvents');
+    const evt = $window.document.createEvent('UIEvents');
     // @ts-ignore
-    evt.initUIEvent('resize', true, false, window, 0);
-    window.dispatchEvent(evt);
+    evt.initUIEvent('resize', true, false, $window, 0);
+    $window.dispatchEvent(evt);
   }
 }
 
@@ -152,3 +154,18 @@ export function printCanvas(canvas: HTMLCanvasElement) {
   // tslint:disable-next-line:no-console
   console.log('%c\n', css.join(''));
 }
+
+export function getViewPortScale() {
+  const meta = $window.document.querySelector('meta[name="viewport"]');
+  if (!meta) {
+    return 1;
+  }
+  const contentItems = (meta as any).content?.split(',');
+  const scale = contentItems.find((item: string) => {
+    const [key, value] = item.split('=');
+    return key === 'initial-scale';
+  });
+  return scale ? scale.split('=')[1] * 1 : 1;
+}
+
+export const DPR = getViewPortScale() < 1 ? 1 : $window.devicePixelRatio;

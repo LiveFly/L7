@@ -1,11 +1,13 @@
-import { decodePickingColor, encodePickingColor } from '@antv/l7-utils';
-import { inject, injectable } from 'inversify';
 import {
-  IMapService,
-  IRendererService,
-  IShaderModuleService,
-} from '../../index';
+  decodePickingColor,
+  DOM,
+  encodePickingColor,
+  isMini,
+} from '@antv/l7-utils';
+import { inject, injectable } from 'inversify';
+import 'reflect-metadata';
 import { TYPES } from '../../types';
+import { isEventCrash } from '../../utils/dom';
 import { IGlobalConfigService, ISceneConfig } from '../config/IConfigService';
 import {
   IInteractionService,
@@ -13,13 +15,16 @@ import {
   InteractionEvent,
 } from '../interaction/IInteractionService';
 import { ILayer, ILayerService } from '../layer/ILayerService';
-import { ILngLat } from '../map/IMapService';
+import { ILngLat, IMapService } from '../map/IMapService';
 import { gl } from '../renderer/gl';
 import { IFramebuffer } from '../renderer/IFramebuffer';
+import { IRendererService } from '../renderer/IRendererService';
 import { IPickingService } from './IPickingService';
-
 @injectable()
 export default class PickingService implements IPickingService {
+  @inject(TYPES.IMapService)
+  private readonly mapService: IMapService;
+
   @inject(TYPES.IRendererService)
   private rendererService: IRendererService;
 
@@ -41,6 +46,8 @@ export default class PickingService implements IPickingService {
 
   private pickBufferScale: number = 1.0;
 
+  private lastPickTime: number = new Date().getTime();
+
   public init(id: string) {
     const {
       createTexture2D,
@@ -48,12 +55,12 @@ export default class PickingService implements IPickingService {
       getViewportSize,
       getContainer,
     } = this.rendererService;
-    let {
-      width,
-      height,
-    } = (getContainer() as HTMLElement).getBoundingClientRect();
-    width *= window.devicePixelRatio;
-    height *= window.devicePixelRatio;
+
+    let { width, height } = this.getContainerSize(
+      getContainer() as HTMLCanvasElement | HTMLElement,
+    );
+    width *= DOM.DPR;
+    height *= DOM.DPR;
     this.pickBufferScale =
       this.configService.getSceneConfig(id).pickBufferScale || 1;
     // 创建 picking framebuffer，后续实时 resize
@@ -72,28 +79,157 @@ export default class PickingService implements IPickingService {
       this.pickingAllLayer.bind(this),
     );
   }
+
+  public async boxPickLayer(
+    layer: ILayer,
+    box: [number, number, number, number],
+    cb: (...args: any[]) => void,
+  ): Promise<any> {
+    const { useFramebuffer, clear, getContainer } = this.rendererService;
+    this.resizePickingFBO();
+    useFramebuffer(this.pickingFBO, () => {
+      clear({
+        framebuffer: this.pickingFBO,
+        color: [0, 0, 0, 0],
+        stencil: 0,
+        depth: 1,
+      });
+      layer.hooks.beforePickingEncode.call();
+      layer.renderModels();
+      layer.hooks.afterPickingEncode.call();
+      const features = this.pickBox(layer, box);
+      cb(features);
+    });
+  }
+
+  public pickBox(layer: ILayer, box: [number, number, number, number]): any[] {
+    const [xMin, yMin, xMax, yMax] = box.map((v) => {
+      const tmpV = v < 0 ? 0 : v;
+      return Math.floor((tmpV * DOM.DPR) / this.pickBufferScale);
+    });
+    const { getViewportSize, readPixels, getContainer } = this.rendererService;
+    let { width, height } = this.getContainerSize(
+      getContainer() as HTMLCanvasElement | HTMLElement,
+    );
+    width *= DOM.DPR;
+    height *= DOM.DPR;
+    if (
+      xMin > ((width - 1) * DOM.DPR) / this.pickBufferScale ||
+      xMax < 0 ||
+      yMin > ((height - 1) * DOM.DPR) / this.pickBufferScale ||
+      yMax < 0
+    ) {
+      return [];
+    }
+    let pickedColors: Uint8Array | undefined;
+    const w = Math.min(width / this.pickBufferScale, xMax) - xMin;
+    const h = Math.min(height / this.pickBufferScale, yMax) - yMin;
+    pickedColors = readPixels({
+      x: xMin,
+      // 视口坐标系原点在左上，而 WebGL 在左下，需要翻转 Y 轴
+      y: Math.floor(height / this.pickBufferScale - (yMax + 1)),
+      width: w,
+      height: h,
+      data: new Uint8Array(w * h * 4),
+      framebuffer: this.pickingFBO,
+    });
+
+    const features = [];
+    const featuresIdMap: { [key: string]: boolean } = {};
+    for (let i = 0; i < pickedColors.length / 4; i = i + 1) {
+      const color = pickedColors.slice(i * 4, i * 4 + 4);
+      const pickedFeatureIdx = decodePickingColor(color);
+      if (pickedFeatureIdx !== -1 && !featuresIdMap[pickedFeatureIdx]) {
+        const rawFeature = layer.getSource().getFeatureById(pickedFeatureIdx);
+        features.push({
+          // @ts-ignore
+          ...rawFeature,
+          pickedFeatureIdx,
+        });
+        featuresIdMap[pickedFeatureIdx] = true;
+      }
+    }
+    return features;
+  }
+
+  // 动态设置鼠标光标
+  public handleCursor(layer: ILayer, type: string) {
+    const { cursor = '', cursorEnabled } = layer.getLayerConfig();
+    if (cursorEnabled) {
+      const version = this.mapService.version;
+      const domContainer =
+        version === 'GAODE2.x'
+          ? this.mapService.getMapContainer()
+          : this.mapService.getMarkerContainer();
+      // const domContainer = this.mapService.getMarkerContainer();
+      // const domContainer = this.mapService.getMapContainer();
+      const defaultCursor = domContainer?.style.getPropertyValue('cursor');
+      if (type === 'unmousemove' && defaultCursor !== '') {
+        domContainer?.style.setProperty('cursor', '');
+      } else if (type === 'mousemove') {
+        domContainer?.style.setProperty('cursor', cursor);
+      }
+    }
+    // const domContainer = this.mapService.getMapContainer()
+    // domContainer?.style.setProperty('cursor', 'move');
+  }
+
+  public destroy() {
+    this.pickingFBO.destroy();
+    // this.pickingFBO = null; 清除对 webgl 实例的引用
+    // @ts-ignore
+    this.pickingFBO = null;
+  }
+
+  // 获取容器的大小 - 兼容小程序环境
+  private getContainerSize(container: HTMLCanvasElement | HTMLElement) {
+    if (!!(container as HTMLCanvasElement).getContext) {
+      return {
+        width: (container as HTMLCanvasElement).width / DOM.DPR,
+        height: (container as HTMLCanvasElement).height / DOM.DPR,
+      };
+    } else {
+      return container.getBoundingClientRect();
+    }
+  }
   private async pickingAllLayer(target: IInteractionTarget) {
-    if (this.alreadyInPicking || this.layerService.alreadyInRendering) {
+    if (
+      // TODO: this.alreadyInPicking 避免多次重复拾取
+      this.alreadyInPicking ||
+      // TODO: this.layerService.alreadyInRendering 一个渲染序列中只进行一次拾取操作
+      this.layerService.alreadyInRendering ||
+      // Tip: this.interactionService.dragging amap2 在点击操作的时候同时会触发 dragging 的情况（避免舍去）
+      this.interactionService.indragging ||
+      // TODO: 判断当前 是都进行 shader pick 拾取判断
+      !this.layerService.getShaderPickStat()
+    ) {
       return;
     }
     this.alreadyInPicking = true;
-    await this.pickingLayers(target);
+    const t = new Date().getTime();
+    // TODO: 优化拾取操作 在右键时 mousedown 和 contextmenu 几乎同时触发，所以不能舍去这一次的触发
+    if (
+      t - this.lastPickTime > 10 ||
+      target.type === 'contextmenu' ||
+      target.type === 'click'
+    ) {
+      await this.pickingLayers(target);
+    }
+    // await this.pickingLayers(target);
+    // @ts-ignore
+    this.lastPickTime = t;
     this.layerService.renderLayers();
     this.alreadyInPicking = false;
   }
-  private async pickingLayers(target: IInteractionTarget) {
-    const {
-      getViewportSize,
-      useFramebuffer,
-      clear,
-      getContainer,
-    } = this.rendererService;
-    let {
-      width,
-      height,
-    } = (getContainer() as HTMLElement).getBoundingClientRect();
-    width *= window.devicePixelRatio;
-    height *= window.devicePixelRatio;
+
+  private resizePickingFBO() {
+    const { getContainer } = this.rendererService;
+    let { width, height } = this.getContainerSize(
+      getContainer() as HTMLCanvasElement | HTMLElement,
+    );
+    width *= DOM.DPR;
+    height *= DOM.DPR;
+
     if (this.width !== width || this.height !== height) {
       this.pickingFBO.resize({
         width: Math.round(width / this.pickBufferScale),
@@ -102,9 +238,18 @@ export default class PickingService implements IPickingService {
       this.width = width;
       this.height = height;
     }
+  }
+  private async pickingLayers(target: IInteractionTarget) {
+    const {
+      getViewportSize,
+      useFramebuffer,
+      clear,
+      getContainer,
+    } = this.rendererService;
+    this.resizePickingFBO();
 
     useFramebuffer(this.pickingFBO, () => {
-      const layers = this.layerService.getLayers();
+      const layers = this.layerService.getRenderList();
       layers
         .filter((layer) => layer.needPick(target.type))
         .reverse()
@@ -116,33 +261,47 @@ export default class PickingService implements IPickingService {
             depth: 1,
           });
           layer.hooks.beforePickingEncode.call();
-          layer.renderModels();
+
+          if (layer.masks.length > 0) {
+            // 若存在 mask，则在 pick 阶段的绘制也启用
+            layer.masks.map((m: ILayer) => {
+              m.hooks.beforeRenderData.call();
+              m.hooks.beforeRender.call();
+              m.render();
+              m.hooks.afterRender.call();
+            });
+          }
+
+          layer.renderModels(true);
           layer.hooks.afterPickingEncode.call();
           const isPicked = this.pickFromPickingFBO(layer, target);
+          this.layerService.pickedLayerId = isPicked ? +layer.id : -1;
+
           return isPicked && !layer.getLayerConfig().enablePropagation;
         });
     });
   }
+
   private pickFromPickingFBO = (
     layer: ILayer,
     { x, y, lngLat, type, target }: IInteractionTarget,
   ) => {
     let isPicked = false;
     const { getViewportSize, readPixels, getContainer } = this.rendererService;
-    let {
-      width,
-      height,
-    } = (getContainer() as HTMLElement).getBoundingClientRect();
-    width *= window.devicePixelRatio;
-    height *= window.devicePixelRatio;
+    let { width, height } = this.getContainerSize(
+      getContainer() as HTMLCanvasElement | HTMLElement,
+    );
+    width *= DOM.DPR;
+    height *= DOM.DPR;
+
     const { enableHighlight, enableSelect } = layer.getLayerConfig();
 
-    const xInDevicePixel = x * window.devicePixelRatio;
-    const yInDevicePixel = y * window.devicePixelRatio;
+    const xInDevicePixel = x * DOM.DPR;
+    const yInDevicePixel = y * DOM.DPR;
     if (
-      xInDevicePixel > width - 1 * window.devicePixelRatio ||
+      xInDevicePixel > width - 1 * DOM.DPR ||
       xInDevicePixel < 0 ||
-      yInDevicePixel > height - 1 * window.devicePixelRatio ||
+      yInDevicePixel > height - 1 * DOM.DPR ||
       yInDevicePixel < 0
     ) {
       return false;
@@ -151,14 +310,20 @@ export default class PickingService implements IPickingService {
     pickedColors = readPixels({
       x: Math.floor(xInDevicePixel / this.pickBufferScale),
       // 视口坐标系原点在左上，而 WebGL 在左下，需要翻转 Y 轴
-      y: Math.floor(
-        (height - (y + 1) * window.devicePixelRatio) / this.pickBufferScale,
-      ),
+      y: Math.floor((height - (y + 1) * DOM.DPR) / this.pickBufferScale),
       width: 1,
       height: 1,
       data: new Uint8Array(1 * 1 * 4),
       framebuffer: this.pickingFBO,
     });
+
+    // let pickedColors = new Uint8Array(4)
+    // this.rendererService.getGLContext().readPixels(
+    //   Math.floor(xInDevicePixel / this.pickBufferScale),
+    //   Math.floor((height - (y + 1) * DOM.DPR) / this.pickBufferScale),
+    //   1, 1, gl.RGBA, gl.UNSIGNED_BYTE, pickedColors)
+    // console.log(pickedColors[0] == pixels[0] && pickedColors[1] == pixels[1] && pickedColors[2] == pixels[2])
+
     if (
       pickedColors[0] !== 0 ||
       pickedColors[1] !== 0 ||
@@ -247,7 +412,13 @@ export default class PickingService implements IPickingService {
       featureId: number | null;
     },
   ) {
-    layer.emit(target.type, target);
+    // layer.emit(target.type, target);
+    // 判断是否发生事件冲突
+    if (isEventCrash(target)) {
+      // Tip: 允许用户动态设置鼠标光标
+      this.handleCursor(layer, target.type);
+      layer.emit(target.type, target);
+    }
   }
 
   /**
@@ -267,11 +438,13 @@ export default class PickingService implements IPickingService {
     layer: ILayer,
     pickedColors: Uint8Array | undefined,
   ) {
+    // @ts-ignore
     const [r, g, b] = pickedColors;
     layer.hooks.beforeHighlight.call([r, g, b]);
   }
 
   private selectFeature(layer: ILayer, pickedColors: Uint8Array | undefined) {
+    // @ts-ignore
     const [r, g, b] = pickedColors;
     layer.hooks.beforeSelect.call([r, g, b]);
   }

@@ -7,7 +7,7 @@ order: 0
 
 ## 概述
 
-source 地理数据处理模块，主要包含数据解析（parser)，和数据处理(transform);
+source 地理数据处理模块，主要包含数据解析（parser)，和数据处理（transform）
 
 - data
 - option
@@ -18,7 +18,7 @@ source 地理数据处理模块，主要包含数据解析（parser)，和数据
 
 ### parser
 
-不同数据类型处理成统一数据格式。矢量数据包括 GeoJON, CSV，Json 等不同数据格式，栅格数据，包括 Raster，Image 数据。将来还会支持瓦片格式数据。
+不同数据类型处理成统一数据格式。矢量数据包括 GeoJON， CSV，Json 等不同数据格式，栅格数据，包括 Raster，Image 数据。将来还会支持瓦片格式数据。
 
 空间数据分矢量数据和栅格数据两大类
 
@@ -40,7 +40,7 @@ source 地理数据处理模块，主要包含数据解析（parser)，和数据
 - minZoom: 最小聚合缩放等级 **number** default 0
 - maxZoom: 最大聚合缩放等级 **number** default 16
 
-[聚合图使用案例](../../../examples/point/cluster)
+[聚合图使用案例](../../../examples/point/cluster#cluster)
 
 ### parser
 
@@ -83,20 +83,61 @@ layer.on('click', (e) => {
 });
 ```
 
-### 方法
+#### setData
 
-#### getClustersLeaves(cluster_id)
+更新 source 数据
 
-聚合图使用，获取聚合节点的原始数据
+##### 参数
 
-参数：
-id 聚合节点的 cluster_id
+- data 数据同 source 初始化参数
+- option 配置项同 source 初始化参数
 
-```javascript
+#### getFeatureById
+
+根据 featurID 获取 feature 要素
+
+##### 参数
+
+- id featureId，L7 内部编码的唯一要素 ID
+
+```tsx
+const source = layer.getSource();
+source.getFeatureById(1);
+```
+
+#### updateFeaturePropertiesById
+
+根据 ID 更新 source 的属性数据，会触发从新渲染
+
+##### 参数
+
+- id featureId，L7 内部编码的唯一要素 ID
+- Properties 需要更新属性数据，merge 操作
+
+```tsx
+const source = layer.getSource();
 layer.on('click', (e) => {
-  console.log(source.getClustersLeaves(e.feature.cluster_id));
+  source.updateFeaturePropertiesById(e.featureId, {
+    name: Math.random() * 10,
+  });
 });
 ```
+
+#### getFeatureId
+
+根据属性的 key、value 获取要素 L7 编码 featureId，确保该属性的 value 是唯一值，如存在多个返回第一个。
+
+##### 参数
+
+- key: 属性字段
+- value: 对应的值
+
+```tsx
+const source = layer.getSource();
+source.getFeatureId('name', '张三');
+```
+
+### 数据类型
 
 #### JSON
 

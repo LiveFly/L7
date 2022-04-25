@@ -1,9 +1,20 @@
 import { IEncodeFeature } from '@antv/l7-core';
 import { aProjectFlat, lngLatToMeters } from '@antv/l7-utils';
 import earcut from 'earcut';
-import { vec3 } from 'gl-matrix';
+// @ts-ignore
+import { mat4, vec3 } from 'gl-matrix';
+import {
+  EARTH_RADIUS,
+  EARTH_RADIUS_OUTER,
+  EARTH_SEGMENTS,
+  lglt2xyz,
+  primitiveSphere,
+} from '../earth/utils';
 import ExtrudePolyline from '../utils/extrude_polyline';
-import { calculteCentroid } from '../utils/geo';
+import {
+  calculateCentroid,
+  calculatePointsCenterAndRadius,
+} from '../utils/geo';
 import extrudePolygon, {
   extrude_PolygonNormal,
   fillPolygon,
@@ -20,16 +31,31 @@ interface IGeometryCache {
   [key: string]: IExtrudeGeomety;
 }
 const GeometryCache: IGeometryCache = {};
+
 /**
  * 计算2D 填充点图顶点
  * @param feature 映射feature
  */
+
 export function PointFillTriangulation(feature: IEncodeFeature) {
-  const coordinates = calculteCentroid(feature.coordinates);
+  const coordinates = calculateCentroid(feature.coordinates);
   return {
     vertices: [...coordinates, ...coordinates, ...coordinates, ...coordinates],
     indices: [0, 1, 2, 2, 3, 0],
     size: coordinates.length,
+  };
+}
+/**
+ * 计算2D 填充点图顶点 (地球模式)
+ * @param feature 映射feature
+ */
+export function GlobelPointFillTriangulation(feature: IEncodeFeature) {
+  const coordinates = calculateCentroid(feature.coordinates);
+  const xyz = lglt2xyz(coordinates as [number, number]);
+  return {
+    vertices: [...xyz, ...xyz, ...xyz, ...xyz],
+    indices: [0, 1, 2, 2, 3, 0],
+    size: xyz.length,
   };
 }
 
@@ -56,7 +82,7 @@ export function PointExtrudeTriangulation(feature: IEncodeFeature) {
  * @param feature 映射feature
  */
 export function PointImageTriangulation(feature: IEncodeFeature) {
-  const coordinates = calculteCentroid(feature.coordinates);
+  const coordinates = calculateCentroid(feature.coordinates);
   return {
     vertices: [...coordinates],
     indices: [0],
@@ -69,19 +95,91 @@ export function PointImageTriangulation(feature: IEncodeFeature) {
  * @param feature 映射feature
  */
 export function LineTriangulation(feature: IEncodeFeature) {
-  const { coordinates } = feature;
-  let path = coordinates as number[][][] | number[][];
-  if (!Array.isArray(path[0][0])) {
-    path = [coordinates] as number[][][];
-  }
+  const { coordinates, originCoordinates, version } = feature;
+  // let path = coordinates as number[][][] | number[][];
+  // if (!Array.isArray(path[0][0])) {
+  //   path = [coordinates] as number[][][];
+  // }
+
   const line = new ExtrudePolyline({
     dash: true,
-    join: 'bevel', //
+    join: 'bevel',
   });
-  path.forEach((item: any) => {
-    // 处理带洞的多边形
-    line.extrude(item as number[][]);
+
+  if (version === 'GAODE2.x') {
+    // 处理高德2.0几何体构建
+    let path1 = coordinates as number[][][] | number[][]; // 计算位置
+    if (!Array.isArray(path1[0][0])) {
+      path1 = [coordinates] as number[][][];
+    }
+    let path2 = originCoordinates as number[][][] | number[][]; // 计算法线
+    if (!Array.isArray(path2[0][0])) {
+      path2 = [originCoordinates] as number[][][];
+    }
+
+    for (let i = 0; i < path1.length; i++) {
+      // 高德2.0在计算线时，需要使用经纬度计算发现，使用 customCoords.lnglatToCoords 计算的数据来计算顶点的位置
+      const item1 = path1[i];
+      const item2 = path2[i];
+      line.extrude_gaode2(item1 as number[][], item2 as number[][]);
+    }
+  } else {
+    // 处理非高德2.0的几何体构建
+    let path = coordinates as number[][][] | number[][];
+    if (path[0] && !Array.isArray(path[0][0])) {
+      path = [coordinates] as number[][][];
+    }
+    path.forEach((item: any) => {
+      line.extrude(item as number[][]);
+    });
+  }
+
+  const linebuffer = line.complex;
+  return {
+    vertices: linebuffer.positions, // [ x,y,z, distance, miter,total ]
+    indices: linebuffer.indices,
+    normals: linebuffer.normals,
+    indexes: linebuffer.indexes,
+    size: 6,
+  };
+}
+
+export function SimpleLineTriangulation(feature: IEncodeFeature) {
+  const { coordinates, originCoordinates, version } = feature;
+
+  const line = new ExtrudePolyline({
+    dash: true,
+    join: 'bevel',
   });
+
+  if (version === 'GAODE2.x') {
+    // 处理高德2.0几何体构建
+    let path1 = coordinates as number[][][] | number[][]; // 计算位置
+    if (!Array.isArray(path1[0][0])) {
+      path1 = [coordinates] as number[][][];
+    }
+    let path2 = originCoordinates as number[][][] | number[][]; // 计算法线
+    if (!Array.isArray(path2[0][0])) {
+      path2 = [originCoordinates] as number[][][];
+    }
+
+    for (let i = 0; i < path1.length; i++) {
+      // 高德2.0在计算线时，需要使用经纬度计算发现，使用 customCoords.lnglatToCoords 计算的数据来计算顶点的位置
+      const item1 = path1[i];
+      const item2 = path2[i];
+      line.simpleExtrude_gaode2(item1 as number[][], item2 as number[][]);
+    }
+  } else {
+    // 处理非高德2.0的几何体构建
+    let path = coordinates as number[][][] | number[][];
+    if (path[0] && !Array.isArray(path[0][0])) {
+      path = [coordinates] as number[][][];
+    }
+    path.forEach((item: any) => {
+      line.simpleExtrude(item as number[][]);
+    });
+  }
+
   const linebuffer = line.complex;
   return {
     vertices: linebuffer.positions, // [ x,y,z, distance, miter,total ]
@@ -102,13 +200,36 @@ export function polygonTriangulation(feature: IEncodeFeature) {
   };
 }
 
+// TODO：构建几何图形（带有中心点和大小）
+export function polygonTriangulationWithCenter(feature: IEncodeFeature) {
+  const { coordinates } = feature;
+  const flattengeo = earcut.flatten(coordinates as number[][][]);
+  const { vertices, dimensions, holes } = flattengeo;
+
+  return {
+    indices: earcut(vertices, holes, dimensions),
+    vertices: getVerticesWithCenter(vertices),
+    size: dimensions + 4,
+  };
+}
+
+function getVerticesWithCenter(vertices: number[]) {
+  const verticesWithCenter = [];
+  const { center, radius } = calculatePointsCenterAndRadius(vertices);
+  for (let i = 0; i < vertices.length; i += 2) {
+    const lng = vertices[i];
+    const lat = vertices[i + 1];
+    verticesWithCenter.push(lng, lat, 0, ...center, radius);
+  }
+  return verticesWithCenter;
+}
+
 export function PolygonExtrudeTriangulation(feature: IEncodeFeature) {
   const coordinates = feature.coordinates as IPosition[][];
   const { positions, index, normals } = extrude_PolygonNormal(
     coordinates,
     true,
   );
-
   return {
     vertices: positions, // [ x, y, z, uv.x,uv.y ]
     indices: index,
@@ -169,13 +290,17 @@ export function RasterImageTriangulation(feature: IEncodeFeature) {
     size: 5,
   };
 }
+
 /**
  *  计算3D弧线顶点
  * @param feature 映射数据
  * @param segNum 弧线线段数
  */
-export function LineArcTriangulation(feature: IEncodeFeature) {
-  const segNum = 30;
+export function LineArcTriangulation(
+  feature: IEncodeFeature,
+  segmentNumber?: number,
+) {
+  const segNum = segmentNumber ? segmentNumber : 30;
   const coordinates = feature.coordinates as IPosition[];
   const positions = [];
   const indexArray = [];
@@ -198,6 +323,7 @@ export function LineArcTriangulation(feature: IEncodeFeature) {
       coordinates[1][0],
       coordinates[1][1],
     );
+
     if (i !== segNum - 1) {
       indexArray.push(
         ...[0, 1, 2, 1, 3, 2].map((v) => {
@@ -213,6 +339,11 @@ export function LineArcTriangulation(feature: IEncodeFeature) {
   };
 }
 
+/**
+ * 构建热力图密度图的顶点
+ * @param feature
+ * @returns
+ */
 export function HeatmapTriangulation(feature: IEncodeFeature) {
   const coordinates = feature.coordinates as number[];
   if (coordinates.length === 2) {
@@ -343,4 +474,32 @@ function addDir(dirX: number, dirY: number) {
   const x = (dirX + 1) / 2;
   const y = (dirY + 1) / 2;
   return [x, y];
+}
+
+/**
+ * 构建地球三角网格
+ * @returns
+ */
+export function earthTriangulation() {
+  const earthmesh = primitiveSphere(EARTH_RADIUS, { segments: EARTH_SEGMENTS });
+  const { positionsArr, indicesArr, normalArr } = earthmesh;
+  return {
+    vertices: positionsArr,
+    indices: indicesArr,
+    size: 5,
+    normals: normalArr,
+  };
+}
+
+export function earthOuterTriangulation() {
+  const earthmesh = primitiveSphere(EARTH_RADIUS + EARTH_RADIUS_OUTER, {
+    segments: EARTH_SEGMENTS,
+  });
+  const { positionsArr, indicesArr, normalArr } = earthmesh;
+  return {
+    vertices: positionsArr,
+    indices: indicesArr,
+    size: 5,
+    normals: normalArr,
+  };
 }

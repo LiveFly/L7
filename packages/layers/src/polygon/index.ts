@@ -1,11 +1,7 @@
 import { IEncodeFeature } from '@antv/l7-core';
 import BaseLayer from '../core/BaseLayer';
-import { PointType } from '../point/models/';
+import { IPolygonLayerStyleOptions } from '../core/interface';
 import PolygonModels, { PolygonModelType } from './models/';
-
-interface IPolygonLayerStyleOptions {
-  opacity: number;
-}
 
 export default class PolygonLayer extends BaseLayer<IPolygonLayerStyleOptions> {
   public type: string = 'PolygonLayer';
@@ -38,6 +34,10 @@ export default class PolygonLayer extends BaseLayer<IPolygonLayerStyleOptions> {
       return 'fill';
     } else if (shape === 'extrude') {
       return 'extrude';
+    } else if (shape === 'water') {
+      return 'water';
+    } else if (shape === 'ocean') {
+      return 'ocean';
     } else if (shape === 'line') {
       return 'line';
     } else {

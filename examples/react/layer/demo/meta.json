@@ -6,18 +6,18 @@
   "demos": [
     {
       "filename": "Point_image.tsx",
-      "title": "点标注图",
-      "screenshot": "https://gw.alipayobjects.com/mdn/rms_855bab/afts/img/A*HQShTKuKq6wAAAAAAAAAAABkARQnAQ"
+      "title": "图片标注图",
+      "screenshot": "https://gw.alipayobjects.com/mdn/rms_816329/afts/img/A*w8c5Tbu7HPIAAAAAAAAAAAAAARQnAQ"
     },
     {
       "filename": "marker.tsx",
       "title": "点标注图",
-      "screenshot": "https://gw.alipayobjects.com/mdn/rms_855bab/afts/img/A*9sibTJP-FIMAAAAAAAAAAAAAARQnAQ"
+      "screenshot": "https://gw.alipayobjects.com/mdn/rms_816329/afts/img/A*CtjuQpCwuUEAAAAAAAAAAAAAARQnAQ"
     },
     {
       "filename": "popup.tsx",
       "title": "信息窗",
-      "screenshot": "https://gw.alipayobjects.com/mdn/rms_855bab/afts/img/A*RWngRL7rZKQAAAAAAAAAAAAAARQnAQ"
-    },
+      "screenshot": "https://gw.alipayobjects.com/mdn/rms_816329/afts/img/A*Sh8pQLLYfoIAAAAAAAAAAAAAARQnAQ"
+    }
   ]
 }

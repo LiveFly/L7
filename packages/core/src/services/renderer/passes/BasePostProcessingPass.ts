@@ -1,15 +1,16 @@
 import { inject, injectable } from 'inversify';
 import { camelCase, isNil, upperFirst } from 'lodash';
-import {
-  gl,
-  IModel,
-  IRendererService,
-  IShaderModuleService,
-} from '../../../index';
+import 'reflect-metadata';
+import { IShaderModuleService } from '../../shader/IShaderModuleService';
+import { gl } from '../gl';
+import { IModel } from '../IModel';
+import { IRendererService } from '../IRendererService';
+
 import quad from '../../../shaders/post-processing/quad.glsl';
 import { TYPES } from '../../../types';
 import { ILayer } from '../../layer/ILayerService';
 import { IPostProcessingPass, PassType } from '../IMultiPassRenderer';
+import { ITexture2D } from '../ITexture2D';
 import { IUniform } from '../IUniform';
 
 /**
@@ -21,7 +22,7 @@ import { IUniform } from '../IUniform';
 export default class BasePostProcessingPass<InitializationOptions = {}>
   implements IPostProcessingPass<InitializationOptions> {
   @inject(TYPES.IShaderModuleService)
-  protected readonly shaderModuleService: IShaderModuleService;
+  protected shaderModuleService: IShaderModuleService;
 
   protected rendererService: IRendererService;
 
@@ -68,6 +69,9 @@ export default class BasePostProcessingPass<InitializationOptions = {}>
     this.rendererService = layer
       .getContainer()
       .get<IRendererService>(TYPES.IRendererService);
+    this.shaderModuleService = layer
+      .getContainer()
+      .get<IShaderModuleService>(TYPES.IShaderModuleService);
 
     const { createAttribute, createBuffer, createModel } = this.rendererService;
     const { vs, fs, uniforms } = this.setupShaders();
@@ -103,7 +107,7 @@ export default class BasePostProcessingPass<InitializationOptions = {}>
     });
   }
 
-  public render(layer: ILayer) {
+  public render(layer: ILayer, tex?: ITexture2D) {
     const postProcessor = layer.multiPassRenderer.getPostProcessor();
     const { useFramebuffer, getViewportSize, clear } = this.rendererService;
     const { width, height } = getViewportSize();
@@ -116,12 +120,20 @@ export default class BasePostProcessingPass<InitializationOptions = {}>
           depth: 1,
           stencil: 0,
         });
+
+        const uniformOptions: { [key: string]: any } = {
+          u_BloomFinal: 0.0,
+          u_Texture: postProcessor.getReadFBO(),
+          // u_Texture: tex ? tex : postProcessor.getReadFBO(),
+          u_ViewportSize: [width, height],
+          ...this.convertOptionsToUniforms(this.optionsToUpdate),
+        };
+        if (tex) {
+          uniformOptions.u_BloomFinal = 1.0;
+          uniformOptions.u_Texture2 = tex;
+        }
         this.model.draw({
-          uniforms: {
-            u_Texture: postProcessor.getReadFBO(),
-            u_ViewportSize: [width, height],
-            ...this.convertOptionsToUniforms(this.optionsToUpdate),
-          },
+          uniforms: uniformOptions,
         });
       },
     );

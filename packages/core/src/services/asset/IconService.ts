@@ -1,8 +1,10 @@
+import { $window } from '@antv/l7-utils';
 import { EventEmitter } from 'eventemitter3';
 import { inject, injectable } from 'inversify';
-import { TYPES } from '../../types';
+import 'reflect-metadata';
 import { buildIconMaping } from '../../utils/font_util';
 import { ITexture2D } from '../renderer/ITexture2D';
+import { ISceneService } from '../scene/ISceneService';
 import {
   IIcon,
   IICONMap,
@@ -15,28 +17,35 @@ const MAX_CANVAS_WIDTH = 1024;
 const imageSize = 64;
 @injectable()
 export default class IconService extends EventEmitter implements IIconService {
-  public canvasHeight: number;
+  public canvasHeight: number = 128;
   private texture: ITexture2D;
   private canvas: HTMLCanvasElement;
   private iconData: IIcon[];
   private iconMap: IICONMap;
   private ctx: CanvasRenderingContext2D;
+  private loadingImageCount = 0;
+
+  public isLoading() {
+    return this.loadingImageCount === 0;
+  }
   public init() {
     this.iconData = [];
     this.iconMap = {};
-    this.canvas = document.createElement('canvas');
+    this.canvas = $window.document.createElement('canvas');
+    this.canvas.width = 128;
+    this.canvas.height = 128;
     this.ctx = this.canvas.getContext('2d') as CanvasRenderingContext2D;
   }
 
   public addImage(id: string, image: IImage) {
     let imagedata = new Image();
+    this.loadingImageCount++;
     if (this.hasImage(id)) {
       throw new Error('Image Id already exists');
     }
     this.iconData.push({
       id,
-      width: imageSize,
-      height: imageSize,
+      size: imageSize,
     });
     this.updateIconMap();
     this.loadImage(image).then((img) => {
@@ -46,13 +55,42 @@ export default class IconService extends EventEmitter implements IIconService {
       });
       if (iconImage) {
         iconImage.image = imagedata;
+        iconImage.width = imagedata.width;
+        iconImage.height = imagedata.height;
       }
-      // this.iconData.push({
-      //   id,
-      //   image: imagedata,
-      //   width: imageSize,
-      //   height: imageSize,
-      // });
+      this.update();
+    });
+  }
+
+  /**
+   * 适配小程序
+   * @param id
+   * @param image
+   * @param sceneService
+   */
+  public addImageMini(id: string, image: IImage, sceneService: ISceneService) {
+    const canvas = sceneService.getSceneConfig().canvas;
+    // @ts-ignore
+    let imagedata = canvas.createImage();
+    this.loadingImageCount++;
+    if (this.hasImage(id)) {
+      throw new Error('Image Id already exists');
+    }
+    this.iconData.push({
+      id,
+      size: imageSize,
+    });
+    this.updateIconMap();
+    this.loadImageMini(image, canvas as HTMLCanvasElement).then((img) => {
+      imagedata = img as HTMLImageElement;
+      const iconImage = this.iconData.find((icon: IIcon) => {
+        return icon.id === id;
+      });
+      if (iconImage) {
+        iconImage.image = imagedata;
+        iconImage.width = imagedata.width;
+        iconImage.height = imagedata.height;
+      }
       this.update();
     });
   }
@@ -83,37 +121,13 @@ export default class IconService extends EventEmitter implements IIconService {
     }
   }
   public destroy(): void {
+    // 在销毁的时候清除所有注册的监听
+    this.removeAllListeners('imageUpdate');
     this.iconData = [];
     this.iconMap = {};
   }
-  private update() {
-    this.updateIconMap();
-    this.updateIconAtlas();
-    this.emit('imageUpdate');
-  }
 
-  private updateIconAtlas() {
-    this.canvas.width = MAX_CANVAS_WIDTH;
-    this.canvas.height = this.canvasHeight;
-    Object.keys(this.iconMap).forEach((item: string) => {
-      const { x, y, image } = this.iconMap[item];
-      if (image) {
-        this.ctx.drawImage(image, x, y, imageSize, imageSize);
-      }
-    });
-  }
-
-  private updateIconMap() {
-    const { mapping, canvasHeight } = buildIconMaping(
-      this.iconData,
-      BUFFER,
-      MAX_CANVAS_WIDTH,
-    );
-    this.iconMap = mapping;
-    this.canvasHeight = canvasHeight;
-  }
-
-  private loadImage(url: IImage) {
+  public loadImage(url: IImage) {
     return new Promise((resolve, reject) => {
       if (url instanceof HTMLImageElement) {
         resolve(url);
@@ -128,6 +142,71 @@ export default class IconService extends EventEmitter implements IIconService {
         reject(new Error('Could not load image at ' + url));
       };
       image.src = url instanceof File ? URL.createObjectURL(url) : url;
+    });
+  }
+  private update() {
+    this.updateIconMap();
+    this.updateIconAtlas();
+    this.loadingImageCount--;
+    if (this.loadingImageCount === 0) {
+      this.emit('imageUpdate');
+    }
+  }
+
+  /**
+   * 将新增的 icon 图像存储到画布上（正方形）
+   */
+  private updateIconAtlas() {
+    this.canvas.width = MAX_CANVAS_WIDTH;
+    this.canvas.height = this.canvasHeight;
+    Object.keys(this.iconMap).forEach((item: string) => {
+      const { x, y, image, width = 64, height = 64 } = this.iconMap[item];
+      const max = Math.max(width as number, height as number);
+      const ratio = max / imageSize;
+      const drawHeight = height / ratio;
+      const drawWidth = width / ratio;
+      if (image) {
+        this.ctx.drawImage(
+          image,
+          x + (imageSize - drawWidth) / 2,
+          y + (imageSize - drawHeight) / 2,
+          drawWidth,
+          drawHeight,
+        );
+      }
+    });
+  }
+
+  /**
+   * 计算 icon 在画布上的排布（是否需要换行）
+   */
+  private updateIconMap() {
+    const { mapping, canvasHeight } = buildIconMaping(
+      this.iconData,
+      BUFFER,
+      MAX_CANVAS_WIDTH,
+    );
+    this.iconMap = mapping;
+    this.canvasHeight = canvasHeight;
+  }
+
+  /**
+   * 适配小程序
+   * @param url
+   * @returns
+   */
+  private loadImageMini(url: IImage, canvas: HTMLCanvasElement) {
+    return new Promise((resolve, reject) => {
+      // @ts-ignore
+      const image = canvas.createImage();
+      image.crossOrigin = 'anonymous';
+      image.onload = () => {
+        resolve(image);
+      };
+      image.onerror = () => {
+        reject(new Error('Could not load image at ' + url));
+      };
+      image.src = url as string;
     });
   }
 }

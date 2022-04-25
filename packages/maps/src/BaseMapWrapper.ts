@@ -1,6 +1,5 @@
 import {
   IGlobalConfigService,
-  ILogService,
   IMapConfig,
   IMapService,
   IMapWrapper,
@@ -9,9 +8,6 @@ import {
 } from '@antv/l7-core';
 import { Container } from 'inversify';
 export default class BaseMapWrapper<RawMap> implements IMapWrapper {
-  @lazyInject(TYPES.ILogService)
-  protected readonly logger: ILogService;
-
   @lazyInject(TYPES.IGlobalConfigService)
   protected readonly configService: IGlobalConfigService;
 
@@ -21,7 +17,12 @@ export default class BaseMapWrapper<RawMap> implements IMapWrapper {
     this.config = config;
   }
 
-  public setContainer(sceneContainer: Container, id: string | HTMLDivElement) {
+  public setContainer(
+    sceneContainer: Container,
+    id: string | HTMLDivElement,
+    canvas?: HTMLCanvasElement,
+    hasBaseMap?: boolean,
+  ) {
     // // 首先使用全局配置服务校验地图参数
     // const { valid, errorText } = this.configService.validateMapConfig(
     //   this.config,
@@ -35,6 +36,8 @@ export default class BaseMapWrapper<RawMap> implements IMapWrapper {
     sceneContainer.bind<Partial<IMapConfig>>(TYPES.MapConfig).toConstantValue({
       ...this.config,
       id,
+      canvas,
+      hasBaseMap,
     });
     sceneContainer
       .bind<IMapService<RawMap>>(TYPES.IMapService)

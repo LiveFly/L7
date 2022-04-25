@@ -15,14 +15,18 @@ L7 目前支持 Control
 
 ## 构造函数
 
-#### option
+### option
 
 position: `string` 控件位置支持是个方位
 
 - bottomright
 - topright
-- bottomleft,
-- topleft`
+- bottomleft
+- topleft
+- topcenter
+- bottomcenter
+- leftcenter
+- rightcenter
 
 ### 组件介绍
 

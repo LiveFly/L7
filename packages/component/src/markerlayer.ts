@@ -77,7 +77,8 @@ export default class MarkerLayer extends EventEmitter {
       this.initCluster();
       this.update();
       // 地图视野变化时，重新计算视野内的聚合点。
-      this.mapsService.on('camerachange', this.update);
+      this.mapsService.on('camerachange', this.update); // amap1.x 更新事件
+      this.mapsService.on('viewchange', this.update); // amap2.0 更新事件
     }
     this.addMarkers();
     return this;
@@ -86,6 +87,14 @@ export default class MarkerLayer extends EventEmitter {
     const cluster = this.markerLayerOption.cluster;
     if (cluster) {
       this.addPoint(marker, this.markers.length);
+      if (this.mapsService) {
+        // 在新增 marker 的时候需要更新聚合信息（哪怕此时的 zoom 没有发生变化）
+        const zoom = this.mapsService.getZoom();
+        const bbox = this.mapsService.getBounds();
+        this.bbox = padBounds(bbox, 0.5);
+        this.zoom = Math.floor(zoom);
+        this.getClusterMarker(this.bbox, this.zoom);
+      }
     }
     this.markers.push(marker);
   }
@@ -96,6 +105,32 @@ export default class MarkerLayer extends EventEmitter {
     if (markerIndex > -1) {
       this.markers.splice(markerIndex, 1);
     }
+  }
+
+  /**
+   * 隐藏 marker 在每个 marker 上单独修改属性而不是在 markerContainer 上修改（在 markerContainer 修改会有用户在场景加载完之前调用失败的问题）
+   */
+  public hide() {
+    this.markers.map((m) => {
+      m.getElement().style.opacity = '0';
+    });
+
+    this.clusterMarkers.map((m) => {
+      m.getElement().style.opacity = '0';
+    });
+  }
+
+  /**
+   * 显示 marker
+   */
+  public show() {
+    this.markers.map((m) => {
+      m.getElement().style.opacity = '1';
+    });
+
+    this.clusterMarkers.map((m) => {
+      m.getElement().style.opacity = '1';
+    });
   }
 
   public getMarkers() {
@@ -138,6 +173,10 @@ export default class MarkerLayer extends EventEmitter {
       },
     };
     this.points.push(feature);
+    if (this.clusterIndex) {
+      // 在新增点的时候需要更新 cluster 的数据
+      this.clusterIndex.load(this.points);
+    }
   }
 
   private initCluster() {
@@ -216,6 +255,9 @@ export default class MarkerLayer extends EventEmitter {
   }
 
   private update() {
+    if (!this.mapsService) {
+      return;
+    }
     const zoom = this.mapsService.getZoom();
     const bbox = this.mapsService.getBounds();
     if (

@@ -6,6 +6,7 @@ import {
   IParseDataItem,
   IParserCfg,
   IParserData,
+  ISource,
   ISourceCFG,
   ITransform,
   lazyInject,
@@ -20,15 +21,22 @@ import {
   Properties,
 } from '@turf/helpers';
 import { EventEmitter } from 'eventemitter3';
-import { cloneDeep, isFunction, isString } from 'lodash';
+import { cloneDeep, isFunction, isString, mergeWith } from 'lodash';
 // @ts-ignore
 // tslint:disable-next-line:no-submodule-imports
 import Supercluster from 'supercluster/dist/supercluster';
-import { getParser, getTransform } from './';
+import { getParser, getTransform } from './factory';
 import { cluster } from './transform/cluster';
 import { statMap } from './utils/statistics';
 import { getColumn } from './utils/util';
-export default class Source extends EventEmitter {
+
+function mergeCustomizer(objValue: any, srcValue: any) {
+  if (Array.isArray(srcValue)) {
+    return srcValue;
+  }
+}
+
+export default class Source extends EventEmitter implements ISource {
   public data: IParserData;
 
   // 数据范围
@@ -37,6 +45,7 @@ export default class Source extends EventEmitter {
   public hooks = {
     init: new SyncHook(),
   };
+
   public parser: IParserCfg = { type: 'geojson' };
   public transforms: ITransform[] = [];
   public cluster: boolean = false;
@@ -47,14 +56,20 @@ export default class Source extends EventEmitter {
     zoom: -99,
     method: 'count',
   };
+  private readonly mapService: IMapService;
+  // 是否有效范围
+  private invalidExtent: boolean = false;
+
+  private dataArrayChanged: boolean = false;
 
   // 原始数据
   private originData: any;
   private rawData: any;
+  private cfg: any = {};
 
   private clusterIndex: Supercluster;
 
-  constructor(data: any, cfg?: ISourceCFG) {
+  constructor(data: any | ISource, cfg?: ISourceCFG) {
     super();
     // this.rawData = cloneDeep(data);
     this.originData = data;
@@ -73,23 +88,22 @@ export default class Source extends EventEmitter {
   }
 
   public setData(data: any, options?: ISourceCFG) {
-    this.rawData = data;
     this.originData = data;
+    this.dataArrayChanged = false;
     this.initCfg(options);
     this.init();
     this.emit('update');
   }
   public getClusters(zoom: number): any {
-    return this.clusterIndex.getClusters(this.extent, zoom);
+    return this.clusterIndex.getClusters(this.caculClusterExtent(2), zoom);
   }
   public getClustersLeaves(id: number): any {
     return this.clusterIndex.getLeaves(id, Infinity);
   }
   public updateClusterData(zoom: number): void {
     const { method = 'sum', field } = this.clusterOptions;
-    const newBounds = padBounds(bBoxToBounds(this.extent), 2);
     let data = this.clusterIndex.getClusters(
-      newBounds[0].concat(newBounds[1]),
+      this.caculClusterExtent(2),
       Math.floor(zoom),
     );
     this.clusterOptions.zoom = zoom;
@@ -133,7 +147,9 @@ export default class Source extends EventEmitter {
           ? this.originData.features[id]
           : 'null';
       const newFeature = cloneDeep(feature);
-      if (this.transforms.length !== 0) {
+
+      if (this.transforms.length !== 0 || this.dataArrayChanged) {
+        // 如果数据进行了transforms 属性会发生改变 或者数据dataArray发生更新
         const item = this.data.dataArray.find((dataItem: IParseDataItem) => {
           return dataItem._id === id;
         });
@@ -145,9 +161,28 @@ export default class Source extends EventEmitter {
     }
   }
 
+  public updateFeaturePropertiesById(
+    id: number,
+    properties: Record<string, any>,
+  ) {
+    this.data.dataArray = this.data.dataArray.map(
+      (dataItem: IParseDataItem) => {
+        if (dataItem._id === id) {
+          return {
+            ...dataItem,
+            ...properties,
+          };
+        }
+        return dataItem;
+      },
+    );
+    this.dataArrayChanged = true;
+    this.emit('update');
+  }
+
   public getFeatureId(field: string, value: any): number | undefined {
     const feature = this.data.dataArray.find((dataItem: IParseDataItem) => {
-      return dataItem[field] === name;
+      return dataItem[field] === value;
     });
     return feature?._id;
   }
@@ -160,7 +195,21 @@ export default class Source extends EventEmitter {
     this.data = null;
   }
 
-  private initCfg(cfg?: ISourceCFG) {
+  private caculClusterExtent(bufferRatio: number): any {
+    let newBounds = [
+      [-Infinity, -Infinity],
+      [Infinity, Infinity],
+    ];
+
+    if (!this.invalidExtent) {
+      newBounds = padBounds(bBoxToBounds(this.extent), bufferRatio);
+    }
+    return newBounds[0].concat(newBounds[1]);
+  }
+
+  private initCfg(option?: ISourceCFG) {
+    this.cfg = mergeWith(this.cfg, option, mergeCustomizer);
+    const cfg = this.cfg;
     if (cfg) {
       if (cfg.parser) {
         this.parser = cfg.parser;
@@ -181,10 +230,20 @@ export default class Source extends EventEmitter {
   private excuteParser(): void {
     const parser = this.parser;
     const type: string = parser.type || 'geojson';
+    // TODO: 图片瓦片地图组件只需要使用 url 参数
+    if (type === 'imagetile') {
+      this.data = {
+        tileurl: this.originData,
+        dataArray: [],
+      };
+      return;
+    }
     const sourceParser = getParser(type);
     this.data = sourceParser(this.originData, parser);
     // 计算范围
     this.extent = extent(this.data.dataArray);
+    this.invalidExtent =
+      this.extent[0] === this.extent[2] || this.extent[1] === this.extent[3];
   }
   /**
    * 数据统计
@@ -193,6 +252,7 @@ export default class Source extends EventEmitter {
     const trans = this.transforms;
     trans.forEach((tran: ITransform) => {
       const { type } = tran;
+
       const data = getTransform(type)(this.data, tran);
       Object.assign(this.data, data);
     });
