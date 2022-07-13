@@ -162,7 +162,7 @@ export default class TextModel extends BaseModel {
       u_raisingHeight: Number(raisingHeight),
 
       u_opacity: isNumber(opacity) ? opacity : 1.0,
-      u_stroke_width: isNumber(strokeWidth) ? strokeWidth : 0.0,
+      u_stroke_width: isNumber(strokeWidth) ? strokeWidth : 1.0,
       u_stroke_color: this.getStrokeColor(stroke),
 
       u_sdf_map: this.texture,
@@ -227,6 +227,7 @@ export default class TextModel extends BaseModel {
   }
 
   public clearModels() {
+    this.texture?.destroy();
     this.dataTexture?.destroy();
     this.layer.off('remapping', this.buildModels);
   }

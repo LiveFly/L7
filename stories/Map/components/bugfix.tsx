@@ -10,6 +10,8 @@ import {
   Marker,
   MarkerLayer,
   Popup,
+  HeatmapLayer,
+  LineLayer,
 } from '@antv/l7';
 
 export default class Amap2demo extends React.Component {
@@ -23,73 +25,84 @@ export default class Amap2demo extends React.Component {
   public async componentDidMount() {
     const scene = new Scene({
       id: 'map',
-      map: new GaodeMap({
-        pitch: 0,
+      map: new Mapbox({
+        // map: new GaodeMap({
+        // map: new GaodeMapV2({
+        // map: new Map({
         style: 'dark',
-        // center: [115, 30],
-
-        center: [105.790327, 36.495636],
-
-        zoom: 0,
-        // layers: [new window.AMap.TileLayer.Satellite()]
+        center: [120, 30],
+        zoom: 4,
       }),
     });
 
     this.scene = scene;
 
+    const layer = new LineLayer()
+      .source({
+        type: 'FeatureCollection',
+        features: [
+          {
+            type: 'Feature',
+            properties: {
+              color: '#0f0',
+            },
+            geometry: {
+              type: 'LineString',
+              coordinates: [
+                [120, 40],
+                [100, 30],
+                [110, 20],
+              ],
+            },
+          },
+          {
+            type: 'Feature',
+            properties: {
+              color: '#f00',
+            },
+            geometry: {
+              type: 'LineString',
+              coordinates: [
+                [130, 30],
+                [100, 20],
+              ],
+            },
+          },
+          {
+            type: 'Feature',
+            properties: {
+              color: '#ff0',
+            },
+            geometry: {
+              type: 'LineString',
+              coordinates: [
+                [100, 20],
+                [130, 30],
+              ],
+            },
+          },
+        ],
+      })
+      .shape('halfLine')
+      .size(20)
+      .color('color')
+      .active(true)
+      .style({
+        // opacity: 0.3,
+        sourceColor: '#f00',
+        targetColor: '#ff0',
+        arrow: {
+          enable: true,
+          arrowWidth: 2,
+          // arrowHeight: 3,
+          // tailWidth: 0,
+        },
+      });
+
     scene.on('loaded', () => {
-      // var xyzTileLayer = new window.AMap.TileLayer({
-      //   // 图块取图地址
-      //   getTileUrl:
-      //     'https://wprd0{1,2,3,4}.is.autonavi.com/appmaptile?x=[x]&y=[y]&z=[z]&size=1&scl=1&style=8&ltype=11',
-      //   zIndex: 100,
-      // });
-      // scene.getMapService().map.add(xyzTileLayer);
-
-      addMarkers();
-      scene.render();
+      scene.addLayer(layer);
+      // console.log(scene.getMapService().lngLatToMercator([100, 30], 0))
     });
-
-    function addMarkers() {
-      fetch(
-        'https://gw.alipayobjects.com/os/basement_prod/d3564b06-670f-46ea-8edb-842f7010a7c6.json',
-      )
-        .then((res) => res.json())
-        .then((nodes) => {
-          const markerLayer = new MarkerLayer({
-            cluster: true,
-          });
-          for (let i = 0; i < nodes.features.length; i++) {
-            const { coordinates } = nodes.features[i].geometry;
-            const marker = new Marker().setLnglat({
-              lng: coordinates[0],
-              lat: coordinates[1],
-            });
-            markerLayer.addMarker(marker);
-          }
-          scene.addMarkerLayer(markerLayer);
-          // 模拟第二次查询（8条数据，坐标点是兰州）
-          // 注意看地图上兰州的位置，原本是3，放大后会变成11
-          const data = [
-            { coordinates: [103.823305441, 36.064225525] },
-            { coordinates: [103.823305441, 36.064225525] },
-            { coordinates: [103.823305441, 36.064225525] },
-            { coordinates: [103.823305441, 36.064225525] },
-            { coordinates: [103.823305441, 36.064225525] },
-            { coordinates: [103.823305441, 36.064225525] },
-            { coordinates: [103.823305441, 36.064225525] },
-            { coordinates: [103.823305441, 36.064225525] },
-          ];
-          for (let i = 0; i < data.length; i++) {
-            const { coordinates } = data[i];
-            const marker = new Marker().setLnglat({
-              lng: coordinates[0],
-              lat: coordinates[1],
-            });
-            markerLayer.addMarker(marker);
-          }
-        });
-    }
   }
 
   public render() {

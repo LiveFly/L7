@@ -81,7 +81,6 @@ export default class WaterModel extends BaseModel {
         fragmentShader: water_frag,
         triangulation: polygonTriangulation,
         depth: { enable: false },
-
         stencil: getMask(mask, maskInside),
       }),
     ];

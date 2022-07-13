@@ -7,7 +7,7 @@ import {
   ITexture2D,
 } from '@antv/l7-core';
 import { getMask, rgb2arr } from '@antv/l7-utils';
-import { create, isNumber } from 'lodash';
+import { isNumber } from 'lodash';
 import BaseModel from '../../core/BaseModel';
 import { IPolygonLayerStyleOptions } from '../../core/interface';
 import { polygonTriangulation } from '../../core/triangulation';
@@ -87,7 +87,6 @@ export default class OceanModel extends BaseModel {
         fragmentShader: ocean_frag,
         triangulation: polygonTriangulation,
         depth: { enable: false },
-
         stencil: getMask(mask, maskInside),
       }),
     ];

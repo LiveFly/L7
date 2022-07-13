@@ -116,8 +116,7 @@ export default class ExtrudeModel extends BaseModel {
 
       u_dataTexture: this.dataTexture, // 数据纹理 - 有数据映射的时候纹理中带数据，若没有任何数据映射时纹理是 [1]
       u_cellTypeLayout: this.getCellTypeLayout(),
-      // u_opacity: opacity || 1.0,
-      // u_offsets: offsets || [0, 0],
+
       u_opacity: isNumber(opacity) ? opacity : 1.0,
 
       // 渐变色支持参数
@@ -158,7 +157,6 @@ export default class ExtrudeModel extends BaseModel {
         depth: {
           enable: depth,
         },
-        // primitive: gl.POINTS,
       }),
     ];
   }

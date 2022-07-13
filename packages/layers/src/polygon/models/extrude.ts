@@ -113,10 +113,6 @@ export default class ExtrudeModel extends BaseModel {
         fragmentShader: frag,
         triangulation: PolygonExtrudeTriangulation,
         stencil: getMask(mask, maskInside),
-        cull: {
-          enable: true,
-          face: gl.BACK, // gl.FRONT | gl.BACK;
-        },
       }),
     ];
   }
@@ -137,7 +133,7 @@ export default class ExtrudeModel extends BaseModel {
       return {
         frag: polygonExtrudePickLightFrag,
         vert: polygonExtrudePickLightVert,
-        type: 'polygonExtrude',
+        type: 'polygonExtrudePickLight',
       };
     } else {
       return {

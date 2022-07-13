@@ -1,5 +1,5 @@
 import { IAnimateOption, IMapService } from '@antv/l7-core';
-import { IColorRamp } from '@antv/l7-utils';
+import { IColorRamp, IImagedata } from '@antv/l7-utils';
 import { styleOffset, styleSingle } from '../core/BaseModel';
 import { anchorType } from '../utils/symbol-layout';
 export enum lineStyleType {
@@ -15,6 +15,9 @@ interface ILineArrow {
 }
 
 export interface ILineLayerStyleOptions {
+  tileOrigin?: number[];
+  coord?: string;
+
   opacity: styleSingle;
   lineType?: keyof typeof lineStyleType; // 可选参数、线类型(all - dash/solid)
   dashArray?: [number, number]; //  可选参数、虚线间隔
@@ -43,9 +46,15 @@ export interface ILineLayerStyleOptions {
   maskInside?: boolean; // 可选参数 控制图层是否显示在蒙层的内部
 
   arrow?: ILineArrow;
+
+  rampColors?: IColorRamp;
+  featureId?: string;
+  sourceLayer?: string;
 }
 
 export interface IPointLayerStyleOptions {
+  tileOrigin?: number[];
+  coord?: string;
   opacity: number;
   strokeOpacity: number;
   strokeWidth: number;
@@ -86,12 +95,16 @@ export interface IPointLayerStyleOptions {
 
   rotation?: number; // angle
   speed?: number;
+  featureId?: string;
+  sourceLayer?: string;
 }
 
 export interface IPolygonLayerStyleOptions {
-  opacity: styleSingle;
+  tileOrigin?: number[];
+  coord?: string;
+  opacity?: number;
 
-  opacityLinear: {
+  opacityLinear?: {
     enable: boolean;
     dir: string;
   };
@@ -115,6 +128,36 @@ export interface IPolygonLayerStyleOptions {
   // ocean
   watercolor?: string;
   watercolor2?: string;
+
+  featureId?: string;
+  sourceLayer?: string;
+}
+
+// 栅格瓦片图层
+export interface IRasterTileLayerStyleOptions {
+  // TODO: define
+  zIndex?: number;
+  opacity?: number;
+}
+export interface IMaskLayerStyleOptions {
+  opacity: styleSingle;
+}
+
+export interface IWindLayerStyleOptions {
+  uMin?: number;
+  uMax?: number;
+  vMin?: number;
+  vMax?: number;
+  fadeOpacity?: number;
+  speedFactor?: number;
+  dropRate?: number;
+  dropRateBump?: number;
+  opacity?: number;
+  numParticles?: number;
+  rampColors?: {
+    [key: number]: string;
+  };
+  sizeScale?: number;
 }
 
 export interface IImageLayerStyleOptions {
@@ -142,12 +185,19 @@ export interface IGeometryLayerStyleOptions {
   terrainClipHeight?: number;
   rgb2height?: (r: number, g: number, b: number) => number;
 
+  // billboard
+  raisingHeight?: number; // 抬升高度
+  canvasWidth?: number;
+  canvasHeight?: number;
+  drawCanvas?: (canvas: HTMLCanvasElement) => void;
+
   // sprite
   spriteAnimate?: string;
   spriteRadius?: number;
   spriteCount?: number;
   spriteSpeed?: number;
   spriteTop?: number;
+  spriteBottom?: number;
   spriteUpdate?: number;
   spriteScale?: number;
 
@@ -192,4 +242,5 @@ export interface IRasterLayerStyleOptions {
   rampColors: IColorRamp;
   mask?: boolean;
   maskInside?: boolean;
+  rampColorsData?: ImageData | IImagedata;
 }

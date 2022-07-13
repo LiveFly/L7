@@ -5,6 +5,7 @@ import {
   gl,
   IActiveOption,
   IAnimateOption,
+  IAttrubuteAndElements,
   ICameraService,
   ICoordinateSystemService,
   IDataState,
@@ -37,6 +38,7 @@ import {
   IStyleAttributeInitializationOptions,
   IStyleAttributeService,
   IStyleAttributeUpdateOptions,
+  LayerEventType,
   lazyInject,
   LegendItems,
   ScaleAttributeType,
@@ -44,15 +46,17 @@ import {
   ScaleTypes,
   StyleAttributeField,
   StyleAttributeOption,
+  Triangulation,
   TYPES,
 } from '@antv/l7-core';
 import Source from '@antv/l7-source';
 import { encodePickingColor } from '@antv/l7-utils';
 import { EventEmitter } from 'eventemitter3';
 import { Container } from 'inversify';
-import { isEqual, isFunction, isObject, isUndefined } from 'lodash';
+import { isFunction, isObject, isUndefined } from 'lodash';
 import { BlendTypes } from '../utils/blend';
 import { handleStyleDataMapping } from '../utils/dataMappingStyle';
+import { calculateData } from '../utils/layerData';
 import {
   createMultiPassRenderer,
   normalizePasses,
@@ -63,7 +67,8 @@ import { updateShape } from '../utils/updateShape';
  */
 let layerIdCounter = 0;
 
-export default class BaseLayer<ChildLayerStyleOptions = {}> extends EventEmitter
+export default class BaseLayer<ChildLayerStyleOptions = {}>
+  extends EventEmitter<LayerEventType>
   implements ILayer {
   public id: string = `${layerIdCounter++}`;
   public name: string = `${layerIdCounter}`;
@@ -80,7 +85,7 @@ export default class BaseLayer<ChildLayerStyleOptions = {}> extends EventEmitter
   public rendering: boolean;
   public clusterZoom: number = 0; // 聚合等级标记
   public layerType?: string | undefined;
-  public isLayerGroup: boolean = false;
+  public triangulation?: Triangulation | undefined;
 
   public dataState: IDataState = {
     dataSourceNeedUpdate: false,
@@ -129,9 +134,12 @@ export default class BaseLayer<ChildLayerStyleOptions = {}> extends EventEmitter
 
   // TODO: 记录 sceneContainer 供创建子图层的时候使用 如 imageTileLayer
   public sceneContainer: Container | undefined;
+  public tileLayer: any | undefined;
   // TODO: 用于保存子图层对象
   public layerChildren: ILayer[] = [];
   public masks: ILayer[] = [];
+  // Tip: 用于标识矢量图层
+  public isVector: boolean = false;
 
   @lazyInject(TYPES.IGlobalConfigService)
   protected readonly configService: IGlobalConfigService;
@@ -227,6 +235,10 @@ export default class BaseLayer<ChildLayerStyleOptions = {}> extends EventEmitter
     maskLayer.destroy();
   }
 
+  public getAttribute(name: string) {
+    return this.styleAttributeService.getLayerStyleAttribute(name);
+  }
+
   public getLayerConfig() {
     return this.configService.getLayerConfig<ChildLayerStyleOptions>(this.id);
   }
@@ -234,6 +246,9 @@ export default class BaseLayer<ChildLayerStyleOptions = {}> extends EventEmitter
   public updateLayerConfig(
     configToUpdate: Partial<ILayerConfig | ChildLayerStyleOptions>,
   ) {
+    // 同步 options 记录
+    this.updateRawConfig(configToUpdate);
+
     if (!this.inited) {
       this.needUpdateConfig = {
         ...this.needUpdateConfig,
@@ -389,7 +404,6 @@ export default class BaseLayer<ChildLayerStyleOptions = {}> extends EventEmitter
     // this.pickingPassRender = this.normalPassFactory('pixelPicking');
     // this.pickingPassRender.init(this);
     this.hooks.afterInit.call();
-
     // 触发初始化完成事件;
     this.emit('inited', {
       target: this,
@@ -399,7 +413,55 @@ export default class BaseLayer<ChildLayerStyleOptions = {}> extends EventEmitter
       target: this,
       type: 'add',
     });
+
     return this;
+  }
+
+  public updateModelData(data: IAttrubuteAndElements) {
+    if (data.attributes && data.elements) {
+      this.models.map((m) => {
+        m.updateAttributesAndElements(data.attributes, data.elements);
+      });
+    } else {
+      console.warn('data error');
+    }
+  }
+
+  public createModelData(data: any, option?: ISourceCFG) {
+    if (this.layerModel.createModelData) {
+      // 在某些特殊图层中单独构建 attribute & elements
+      return this.layerModel.createModelData(option);
+    }
+    const calEncodeData = this.calculateEncodeData(data, option);
+    const triangulation = this.triangulation;
+
+    if (calEncodeData && triangulation) {
+      return this.styleAttributeService.createAttributesAndIndices(
+        calEncodeData,
+        triangulation,
+      );
+    } else {
+      return {
+        attributes: undefined,
+        elements: undefined,
+      };
+    }
+  }
+
+  public calculateEncodeData(data: any, option?: ISourceCFG) {
+    if (this.inited) {
+      return calculateData(
+        this,
+        this.fontService,
+        this.mapService,
+        this.styleAttributeService,
+        data,
+        option,
+      );
+    } else {
+      console.warn('layer not inited!');
+      return null;
+    }
   }
   /**
    * Model初始化前需要更新Model样式
@@ -487,7 +549,9 @@ export default class BaseLayer<ChildLayerStyleOptions = {}> extends EventEmitter
     };
     this.updateStyleAttribute('shape', field, values, updateOptions);
     // TODO: 根据 shape 判断是否需要更新 model
-    updateShape(this, lastShape, currentShape);
+    if (!this.tileLayer) {
+      updateShape(this, lastShape, currentShape);
+    }
     return this;
   }
   public label(
@@ -614,6 +678,11 @@ export default class BaseLayer<ChildLayerStyleOptions = {}> extends EventEmitter
   }
 
   public render(): ILayer {
+    if (this.tileLayer !== undefined) {
+      // 瓦片图层执行单独的 render 渲染队列
+      this.tileLayer.render();
+      return this;
+    }
     // TODO: this.getEncodedData().length !== 0 这个判断是为了解决在 2.5.x 引入数据纹理后产生的 空数据渲染导致 texture 超出上限问题
     if (this.getEncodedData().length !== 0) {
       this.renderModels();
@@ -761,6 +830,10 @@ export default class BaseLayer<ChildLayerStyleOptions = {}> extends EventEmitter
   }
 
   public hide(): ILayer {
+    if (this.type === 'CanvasLayer' && this.layerModel.clearCanvas) {
+      // 对 canvasLayer 的 hide 操作做特殊处理
+      this.layerModel.clearCanvas();
+    }
     this.updateLayerConfig({
       visible: false,
     });
@@ -891,7 +964,7 @@ export default class BaseLayer<ChildLayerStyleOptions = {}> extends EventEmitter
     return this;
   }
 
-  public destroy() {
+  public destroy(refresh = true) {
     if (this.isDestroied) {
       return;
     }
@@ -922,7 +995,7 @@ export default class BaseLayer<ChildLayerStyleOptions = {}> extends EventEmitter
 
     this.models = [];
 
-    this.layerService.cleanRemove(this);
+    this.layerService.cleanRemove(this, refresh);
 
     this.emit('remove', {
       target: this,
@@ -1170,7 +1243,6 @@ export default class BaseLayer<ChildLayerStyleOptions = {}> extends EventEmitter
         this.hooks.beforeRender.call();
         this.layerModelNeedUpdate = false;
       }
-
       if (this.layerModel.renderUpdate) {
         this.layerModel.renderUpdate();
       }
@@ -1241,6 +1313,18 @@ export default class BaseLayer<ChildLayerStyleOptions = {}> extends EventEmitter
   }
   protected getDefaultConfig() {
     return {};
+  }
+
+  private updateRawConfig(
+    configToUpdate: Partial<ILayerConfig | ChildLayerStyleOptions>,
+  ) {
+    Object.keys(configToUpdate).map((key) => {
+      // @ts-ignore
+      if (this.rawConfig[key] && this.rawConfig[key] !== configToUpdate[key]) {
+        // @ts-ignore
+        this.rawConfig[key] = configToUpdate[key];
+      }
+    });
   }
 
   private sourceEvent = () => {
