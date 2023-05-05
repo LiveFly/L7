@@ -1,4 +1,4 @@
-import { ILayer, ILayerPlugin, IMapService, TYPES } from '@antv/l7-core';
+import { ILayer, ILayerPlugin } from '@antv/l7-core';
 import { injectable } from 'inversify';
 import 'reflect-metadata';
 /**
@@ -10,8 +10,15 @@ export default class UpdateModelPlugin implements ILayerPlugin {
     layer.hooks.beforeRender.tap('UpdateModelPlugin', () => {
       // 处理文本更新
       if (layer.layerModel) {
-        layer.layerModel.needUpdate();
+        layer.layerModel.needUpdate().then((flag) => {
+          if (flag) {
+            layer.renderLayers();
+          }
+        });
       }
+    });
+    layer.hooks.afterRender.tap('UpdateModelPlugin', () => {
+      layer.layerModelNeedUpdate = false;
     });
   }
 }

@@ -6,10 +6,10 @@ import {
   IModelUniform,
   ITexture2D,
 } from '@antv/l7-core';
-import { generateColorRamp, getMask, IColorRamp } from '@antv/l7-utils';
+import { generateColorRamp, IColorRamp } from '@antv/l7-utils';
 import { isNumber } from 'lodash';
 import BaseModel from '../../core/BaseModel';
-import { ILineLayerStyleOptions } from '../../core/interface';
+import { ILineLayerStyleOptions, LinearDir } from '../../core/interface';
 import { LineTriangulation } from '../../core/triangulation';
 import linear_line_frag from '../shaders/linearLine/line_linear_frag.glsl';
 import linear_line_vert from '../shaders/linearLine/line_linear_vert.glsl';
@@ -22,6 +22,7 @@ export default class LinearLineModel extends BaseModel {
       vertexHeightScale = 20.0,
       raisingHeight = 0,
       heightfixed = false,
+      linearDir = LinearDir.VERTICAL,
     } = this.layer.getLayerConfig() as ILineLayerStyleOptions;
 
     if (this.rendererService.getDirty()) {
@@ -61,6 +62,7 @@ export default class LinearLineModel extends BaseModel {
       u_dataTexture: this.dataTexture, // 数据纹理 - 有数据映射的时候纹理中带数据，若没有任何数据映射时纹理是 [1]
       u_cellTypeLayout: this.getCellTypeLayout(),
 
+      u_linearDir: linearDir === LinearDir.VERTICAL ? 1.0 : 0.0,
       u_opacity: isNumber(opacity) ? opacity : 1.0,
       // 纹理支持参数
       u_texture: this.colorTexture, // 贴图
@@ -74,7 +76,7 @@ export default class LinearLineModel extends BaseModel {
     };
   }
 
-  public initModels(): IModel[] {
+  public async initModels(): Promise<IModel[]> {
     this.updateTexture();
     return this.buildModels();
   }
@@ -84,38 +86,20 @@ export default class LinearLineModel extends BaseModel {
     this.dataTexture?.destroy();
   }
 
-  public buildModels(): IModel[] {
-    const {
-      mask = false,
-      maskInside = true,
-      depth = false,
-    } = this.layer.getLayerConfig() as ILineLayerStyleOptions;
-    const { frag, vert, type } = this.getShaders();
-    this.layer.triangulation = LineTriangulation;
-    return [
-      this.layer.buildLayerModel({
-        moduleName: 'line_' + type,
-        vertexShader: vert,
-        fragmentShader: frag,
-        triangulation: LineTriangulation,
-        primitive: gl.TRIANGLES,
-        blend: this.getBlend(),
-        depth: { enable: depth },
-        stencil: getMask(mask, maskInside),
-      }),
-    ];
-  }
+  public async buildModels(): Promise<IModel[]> {
+    const { depth = false } =
+      this.layer.getLayerConfig() as ILineLayerStyleOptions;
 
-  /**
-   * 根据参数获取不同的 shader 代码
-   * @returns
-   */
-  public getShaders(): { frag: string; vert: string; type: string } {
-    return {
-      frag: linear_line_frag,
-      vert: linear_line_vert,
-      type: 'linear_rampColors',
-    };
+    this.layer.triangulation = LineTriangulation;
+
+    const model = await this.layer.buildLayerModel({
+      moduleName: 'lineRampColors',
+      vertexShader: linear_line_vert,
+      fragmentShader: linear_line_frag,
+      triangulation: LineTriangulation,
+      depth: { enable: depth },
+    });
+    return [model];
   }
 
   protected registerBuiltinAttributes() {
@@ -161,7 +145,6 @@ export default class LinearLineModel extends BaseModel {
           feature: IEncodeFeature,
           featureIdx: number,
           vertex: number[],
-          attributeIdx: number,
         ) => {
           return [vertex[5]];
         },
@@ -180,12 +163,7 @@ export default class LinearLineModel extends BaseModel {
           type: gl.FLOAT,
         },
         size: 2,
-        update: (
-          feature: IEncodeFeature,
-          featureIdx: number,
-          vertex: number[],
-          attributeIdx: number,
-        ) => {
+        update: (feature: IEncodeFeature) => {
           const { size = 1 } = feature;
           return Array.isArray(size) ? [size[0], size[1]] : [size as number, 0];
         },
@@ -205,7 +183,6 @@ export default class LinearLineModel extends BaseModel {
           type: gl.FLOAT,
         },
         size: 3,
-        // @ts-ignore
         update: (
           feature: IEncodeFeature,
           featureIdx: number,
@@ -234,7 +211,6 @@ export default class LinearLineModel extends BaseModel {
           feature: IEncodeFeature,
           featureIdx: number,
           vertex: number[],
-          attributeIdx: number,
         ) => {
           return [vertex[4]];
         },
@@ -247,9 +223,8 @@ export default class LinearLineModel extends BaseModel {
     if (this.colorTexture) {
       this.colorTexture.destroy();
     }
-    const {
-      rampColors,
-    } = this.layer.getLayerConfig() as ILineLayerStyleOptions;
+    const { rampColors } =
+      this.layer.getLayerConfig() as ILineLayerStyleOptions;
     const imageData = generateColorRamp(rampColors as IColorRamp);
     this.colorTexture = createTexture2D({
       data: new Uint8Array(imageData.data),

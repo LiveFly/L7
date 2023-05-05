@@ -18,7 +18,9 @@ export default class MouseHandler {
   public reset() {
     this.active = false;
     this.moved = false;
+    // @ts-ignore
     delete this.lastPoint;
+    // @ts-ignore
     delete this.eventButton;
   }
 
@@ -95,11 +97,13 @@ export default class MouseHandler {
     return this.active;
   }
 
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   protected correctButton(e: MouseEvent, button: number) {
     // eslint-disable-line
     return false; // implemented by child
   }
 
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   protected move(lastPoint: Point, point: Point) {
     // eslint-disable-line
     return; // implemented by child

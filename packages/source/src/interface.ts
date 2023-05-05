@@ -1,4 +1,14 @@
 export type DataType = string | object[] | object;
+export type TypedArray =
+  | Int8Array
+  | Uint8Array
+  | Int16Array
+  | Uint16Array
+  | Int32Array
+  | Uint32Array
+  | Uint8ClampedArray
+  | Float32Array
+  | Float64Array;
 export interface IDictionary<TValue> {
   [key: string]: TValue;
 }
@@ -21,31 +31,76 @@ export interface IParserData {
   featureKeys?: IFeatureKey;
 }
 
-// 栅格瓦片解析配置项
-
-export enum RasterTileType {
-  IMAGE = 'image',
-  ARRAYBUFFER = 'arraybuffer',
-}
-export interface IRasterTileParserCFG {
-  tileSize?: number;
-  minZoom?: number;
-  maxZoom?: number;
-  zoomOffset?: number;
-  extent?: [number, number, number, number];
-  updateStrategy?: 'overlap' | 'replace';
-  // 指定 feature 编码 id
-  featureId?: string;
-  // 指定矢量瓦片的数据分类
-  sourceLayer?: string;
-  coord?: string;
-  // 指定栅格瓦片的类型
-  dataType?: RasterTileType;
-
-  format?: any;
-}
-
 export interface IJsonItem {
   [key: string]: any;
 }
 export type IJsonData = IJsonItem[];
+
+export interface IRasterData {
+  rasterData: HTMLImageElement | Uint8Array | ImageBitmap | null | undefined;
+  width: number;
+  height: number;
+}
+export type IRasterFormat = (
+  imageData: ArrayBuffer,
+  bands: number[],
+  channels?: string[],
+) => Promise<IRasterData | IRasterData[]>;
+export interface IRasterFileData {
+  data: ArrayBuffer;
+  bands: number[];
+}
+
+export type IRgbOperation = {
+  r?: any[];
+  g?: any[];
+  b?: any[];
+};
+export type SchemaOperationType = SchemaRGBOperation | SchemaBandOperation;
+export type SchemaRGBOption = {
+  countCut?: [number, number]; // 百分比
+  RMinMax?: [number, number];
+  GMinMax?: [number, number];
+  BMinMax?: [number, number];
+};
+
+export type SchemaRGBOperation = {
+  type: 'rgb';
+  options:
+    | SchemaRGBOption
+    | {
+        r?: any[];
+        g?: any[];
+        b?: any[];
+      };
+};
+export type SchemaBandOperation = {
+  type: 'nd';
+};
+
+export type IBandsOperation =
+  | ((bands: IRasterData[]) => Uint8Array | number[])
+  | any[]
+  | IRgbOperation
+  | SchemaOperationType;
+
+export type IRasterLayerData = number[] | IRasterFileData | IRasterFileData[];
+
+export interface IRasterCfg {
+  format?: IRasterFormat;
+  operation?: IBandsOperation;
+  extent: [number, number, number, number];
+  width: number;
+  height: number;
+  max: number;
+  min: number;
+}
+
+import { Feature } from '@turf/helpers';
+export interface ITileSource {
+  getTileData(layer: string): any;
+}
+
+export type MapboxVectorTile = {
+  layers: { [_: string]: { features: Feature[] } };
+};

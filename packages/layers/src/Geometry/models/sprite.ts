@@ -1,12 +1,4 @@
-import {
-  AttributeType,
-  gl,
-  IAnimateOption,
-  IEncodeFeature,
-  ILayerConfig,
-  IModelUniform,
-  ITexture2D,
-} from '@antv/l7-core';
+import { gl, IModel, IModelUniform, ITexture2D } from '@antv/l7-core';
 import { Version } from '@antv/l7-maps';
 
 import BaseModel from '../../core/BaseModel';
@@ -66,11 +58,9 @@ export default class SpriteModel extends BaseModel {
   }
 
   public planeGeometryUpdateTriangulation = () => {
-    const {
-      spriteBottom = -100000,
-    } = this.layer.getLayerConfig() as IGeometryLayerStyleOptions;
+    const { spriteBottom = -100000 } =
+      this.layer.getLayerConfig() as IGeometryLayerStyleOptions;
     const updateZ = this.spriteUpdate;
-    // const bottomZ = -100000;
     const bottomZ = spriteBottom;
     const topZ = this.spriteTop;
 
@@ -97,13 +87,13 @@ export default class SpriteModel extends BaseModel {
 
   public updateModel = () => {
     // @ts-ignore
-    const attributes = this.layer.createAttrubutes({
+    const attributes = this.layer.createAttributes({
       triangulation: this.planeGeometryUpdateTriangulation,
     });
     this.layer.models.map((m) => {
       m.updateAttributes(attributes);
     });
-    this.layer.renderLayers();
+    this.layerService.throttleRenderLayers();
 
     this.timer = requestAnimationFrame(this.updateModel);
   };
@@ -153,7 +143,7 @@ export default class SpriteModel extends BaseModel {
     this.texture?.destroy();
   }
 
-  public initModels() {
+  public async initModels(): Promise<IModel[]> {
     const {
       mapTexture,
       spriteTop = 5000000,
@@ -179,20 +169,19 @@ export default class SpriteModel extends BaseModel {
       this.updateModel();
     }, 100);
 
-    return [
-      this.layer.buildLayerModel({
-        moduleName: 'geometry_sprite',
-        vertexShader: spriteVert,
-        fragmentShader: spriteFrag,
-        triangulation: this.planeGeometryTriangulation,
-        primitive: gl.POINTS,
-        depth: { enable: false },
-        blend: this.getBlend(),
-      }),
-    ];
+    const model = await this.layer.buildLayerModel({
+      moduleName: 'geometrySprite',
+      vertexShader: spriteVert,
+      fragmentShader: spriteFrag,
+      triangulation: this.planeGeometryTriangulation,
+      primitive: gl.POINTS,
+      depth: { enable: false },
+      blend: this.getBlend(),
+    });
+    return [model];
   }
 
-  public buildModels() {
+  public async buildModels(): Promise<IModel[]> {
     return this.initModels();
   }
 
@@ -210,8 +199,7 @@ export default class SpriteModel extends BaseModel {
           wrapS: gl.CLAMP_TO_EDGE,
           wrapT: gl.CLAMP_TO_EDGE,
         });
-        this.layerService.updateLayerRenderList();
-        this.layerService.renderLayers();
+        this.layerService.reRender();
       };
       img.src = mapTexture;
     } else {
@@ -220,18 +208,6 @@ export default class SpriteModel extends BaseModel {
         height: 0,
       });
     }
-  }
-
-  protected getConfigSchema() {
-    return {
-      properties: {
-        opacity: {
-          type: 'number',
-          minimum: 0,
-          maximum: 1,
-        },
-      },
-    };
   }
 
   protected registerBuiltinAttributes() {

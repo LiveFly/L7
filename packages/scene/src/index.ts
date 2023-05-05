@@ -6,6 +6,7 @@ import {
   ICameraOptions,
   IControl,
   IControlService,
+  IDebugService,
   IFontService,
   IIconFontGlyph,
   IIconService,
@@ -32,8 +33,9 @@ import {
 } from '@antv/l7-core';
 import { MaskLayer } from '@antv/l7-layers';
 import { ReglRendererService } from '@antv/l7-renderer';
-import { DOM, isMini } from '@antv/l7-utils';
+import { DOM, isMini, setMiniScene } from '@antv/l7-utils';
 import { Container } from 'inversify';
+import BoxSelect, { BoxSelectEventList } from './boxSelect';
 import ILayerManager from './ILayerManager';
 import IMapController from './IMapController';
 import IPostProcessingPassPluggable from './IPostProcessingPassPluggable';
@@ -51,16 +53,19 @@ import IPostProcessingPassPluggable from './IPostProcessingPassPluggable';
  *
  */
 class Scene
-  implements IPostProcessingPassPluggable, IMapController, ILayerManager {
+  implements IPostProcessingPassPluggable, IMapController, ILayerManager
+{
   private sceneService: ISceneService;
   private mapService: IMapService<unknown>;
   private controlService: IControlService;
   private layerService: ILayerService;
+  private debugService: IDebugService;
   private iconService: IIconService;
   private markerService: IMarkerService;
   private popupService: IPopupService;
   private fontService: IFontService;
   private interactionService: IInteractionService;
+  private boxSelect: BoxSelect;
   private container: Container;
 
   public constructor(config: ISceneConfig) {
@@ -88,6 +93,8 @@ class Scene
       TYPES.IControlService,
     );
     this.layerService = sceneContainer.get<ILayerService>(TYPES.ILayerService);
+    this.debugService = sceneContainer.get<IDebugService>(TYPES.IDebugService);
+    this.debugService.setEnable(config.debug);
 
     this.markerService = sceneContainer.get<IMarkerService>(
       TYPES.IMarkerService,
@@ -96,6 +103,8 @@ class Scene
       TYPES.IInteractionService,
     );
     this.popupService = sceneContainer.get<IPopupService>(TYPES.IPopupService);
+    this.boxSelect = new BoxSelect(this, {});
+    setMiniScene(config?.isMini || false);
 
     if (isMini) {
       this.sceneService.initMiniScene(config);
@@ -143,11 +152,20 @@ class Scene
   public getMapService(): IMapService<unknown> {
     return this.mapService;
   }
-  public exportPng(type?: 'png' | 'jpg'): string {
+
+  /**
+   * 对外暴露 debugService
+   * @returns
+   */
+  public getDebugService(): IDebugService {
+    return this.debugService;
+  }
+
+  public async exportPng(type?: 'png' | 'jpg'): Promise<string> {
     return this.sceneService.exportPng(type);
   }
 
-  public exportMap(type?: 'png' | 'jpg'): string {
+  public async exportMap(type?: 'png' | 'jpg'): Promise<string> {
     return this.sceneService.exportPng(type);
   }
 
@@ -175,38 +193,45 @@ class Scene
     layer.setContainer(layerContainer, this.container);
     this.sceneService.addLayer(layer);
 
-    const layerConfig = layer.getLayerConfig();
-    if (layerConfig) {
-      // 若 layer 未初始化成功，则 layerConfig 为 undefined （scene loaded 尚未执行完成）
-      const {
-        mask,
-        maskfence,
-        maskColor = '#000',
-        maskOpacity = 0,
-      } = layerConfig;
-      if (mask && maskfence) {
-        const maskInstance = new MaskLayer()
-          .source(maskfence)
-          .shape('fill')
-          .color(maskColor)
-          .style({
-            opacity: maskOpacity,
-          });
-
-        this.addMask(maskInstance, layer.id);
-      }
+    // mask 在 scene loaded 之后执行
+    if (layer.inited) {
+      const maskInstance = this.initMask(layer);
+      this.addMask(maskInstance as ILayer, layer.id);
     } else {
-      console.warn('addLayer should run after scene loaded!');
+      layer.on('inited', () => {
+        const maskInstance = this.initMask(layer); // 初始化 mask
+        this.addMask(maskInstance as ILayer, layer.id);
+      });
     }
   }
 
+  public initMask(layer: ILayer) {
+    const {
+      mask,
+      maskfence,
+      maskColor = '#000',
+      maskOpacity = 0,
+    } = layer.getLayerConfig();
+    if (!mask || !maskfence) {
+      return undefined;
+    }
+    const maskInstance = new MaskLayer().source(maskfence).shape('fill').style({
+      color: maskColor,
+      opacity: maskOpacity,
+    });
+    return maskInstance;
+  }
+
   public addMask(mask: ILayer, layerId: string) {
+    if (!mask) {
+      return;
+    }
     const parent = this.getLayer(layerId);
     if (parent) {
       const layerContainer = createLayerContainer(this.container);
       mask.setContainer(layerContainer, this.container);
       parent.addMaskLayer(mask);
-      this.sceneService.addLayer(mask);
+      this.sceneService.addMask(mask);
     } else {
       console.warn('parent layer not find!');
     }
@@ -228,12 +253,12 @@ class Scene
     return this.layerService.getLayerByName(name);
   }
 
-  public removeLayer(layer: ILayer, parentLayer?: ILayer): void {
-    this.layerService.remove(layer, parentLayer);
+  public async removeLayer(layer: ILayer, parentLayer?: ILayer): Promise<void> {
+    await this.layerService.remove(layer, parentLayer);
   }
 
-  public removeAllLayer(): void {
-    this.layerService.removeAllLayers();
+  public async removeAllLayer(): Promise<void> {
+    await this.layerService.removeAllLayers();
   }
 
   public render(): void {
@@ -265,16 +290,18 @@ class Scene
    * @param fontPath
    */
   public addFontFace(fontFamily: string, fontPath: string): void {
-    this.sceneService.addFontFace(fontFamily, fontPath);
+    this.fontService.once('fontloaded', (e) => {
+      this.emit('fontloaded', e);
+    });
+    this.fontService.addFontFace(fontFamily, fontPath);
   }
 
-  public addImage(id: string, img: IImage) {
+  public async addImage(id: string, img: IImage) {
     if (!isMini) {
-      this.iconService.addImage(id, img);
+      await this.iconService.addImage(id, img);
     } else {
       this.iconService.addImageMini(id, img, this.sceneService);
     }
-    // this.iconService.addImage(id, img);
   }
 
   public hasImage(id: string) {
@@ -323,22 +350,43 @@ class Scene
     this.popupService.addPopup(popup);
   }
 
+  public removePopup(popup: IPopup) {
+    this.popupService.removePopup(popup);
+  }
+
   public on(type: string, handle: (...args: any[]) => void): void {
-    SceneEventList.indexOf(type) === -1
-      ? this.mapService.on(type, handle)
-      : this.sceneService.on(type, handle);
+    if (BoxSelectEventList.includes(type)) {
+      this.boxSelect?.on(type, handle);
+    } else if (SceneEventList.includes(type)) {
+      this.sceneService.on(type, handle);
+    } else {
+      this.mapService.on(type, handle);
+    }
   }
 
   public once(type: string, handle: (...args: any[]) => void): void {
+    if (BoxSelectEventList.includes(type)) {
+      this.boxSelect?.once(type, handle);
+    } else if (SceneEventList.includes(type)) {
+      this.sceneService.once(type, handle);
+    } else {
+      this.mapService.once(type, handle);
+    }
+  }
+  public emit(type: string, handle: (...args: any[]) => void): void {
     SceneEventList.indexOf(type) === -1
-      ? this.mapService.once(type, handle)
-      : this.sceneService.once(type, handle);
+      ? this.mapService.on(type, handle)
+      : this.sceneService.emit(type, handle);
   }
 
   public off(type: string, handle: (...args: any[]) => void): void {
-    SceneEventList.indexOf(type) === -1
-      ? this.mapService.off(type, handle)
-      : this.sceneService.off(type, handle);
+    if (BoxSelectEventList.includes(type)) {
+      this.boxSelect?.off(type, handle);
+    } else if (SceneEventList.includes(type)) {
+      this.sceneService.off(type, handle);
+    } else {
+      this.mapService.off(type, handle);
+    }
   }
 
   // implements IMapController
@@ -459,6 +507,19 @@ class Scene
 
   public diasbleShaderPick() {
     this.layerService.disableShaderPick();
+  }
+
+  public enableBoxSelect(once = true) {
+    this.boxSelect.enable();
+    if (once) {
+      this.boxSelect.once('selectend', () => {
+        this.disableBoxSelect();
+      });
+    }
+  }
+
+  public disableBoxSelect() {
+    this.boxSelect.disable();
   }
 
   // get current point size info

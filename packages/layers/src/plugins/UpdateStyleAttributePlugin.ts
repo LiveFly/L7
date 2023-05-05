@@ -1,10 +1,5 @@
-import {
-  ILayer,
-  ILayerPlugin,
-  IStyleAttributeService,
-  TYPES,
-} from '@antv/l7-core';
-import { inject, injectable } from 'inversify';
+import { ILayer, ILayerPlugin, IStyleAttributeService } from '@antv/l7-core';
+import { injectable } from 'inversify';
 import 'reflect-metadata';
 
 /**
@@ -18,23 +13,20 @@ export default class UpdateStyleAttributePlugin implements ILayerPlugin {
       styleAttributeService,
     }: { styleAttributeService: IStyleAttributeService },
   ) {
-    layer.hooks.init.tap('UpdateStyleAttributePlugin', () => {
+    layer.hooks.init.tapPromise('UpdateStyleAttributePlugin', () => {
       this.initStyleAttribute(layer, { styleAttributeService });
     });
-
-    // layer.hooks.beforeRenderData.tap('styleAttributeService', () => {
-    //   // layer.layerModelNeedUpdate = true;
-    //   return true;
-    // });
 
     layer.hooks.beforeRender.tap('UpdateStyleAttributePlugin', () => {
       if (layer.layerModelNeedUpdate) {
         return;
       }
-      this.updateStyleAtrribute(layer, { styleAttributeService });
+      if (layer.inited) {
+        this.updateStyleAttribute(layer, { styleAttributeService });
+      }
     });
   }
-  private updateStyleAtrribute(
+  private updateStyleAttribute(
     layer: ILayer,
     {
       styleAttributeService,
@@ -42,12 +34,7 @@ export default class UpdateStyleAttributePlugin implements ILayerPlugin {
   ) {
     const attributes = styleAttributeService.getLayerStyleAttributes() || [];
     const filter = styleAttributeService.getLayerStyleAttribute('filter');
-    const shape = styleAttributeService.getLayerStyleAttribute('shape');
-    if (
-      filter &&
-      filter.needRegenerateVertices // ||
-      // (shape && shape.needRegenerateVertices) // TODO:Shape 更新重新build
-    ) {
+    if (filter && filter.needRegenerateVertices) {
       layer.layerModelNeedUpdate = true;
       attributes.forEach((attr) => (attr.needRegenerateVertices = false));
       return;
@@ -61,6 +48,7 @@ export default class UpdateStyleAttributePlugin implements ILayerPlugin {
           layer.getEncodedData(), // 获取经过 mapping 最新的数据
           attribute.featureRange.startIndex,
           attribute.featureRange.endIndex,
+          layer,
         );
         attribute.needRegenerateVertices = false;
       });

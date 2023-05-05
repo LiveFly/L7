@@ -1,56 +1,42 @@
-import { gl, IModel } from '@antv/l7-core';
+import { IModel } from '@antv/l7-core';
+import { rgb2arr } from '@antv/l7-utils';
 import { isNumber } from 'lodash';
 import BaseModel from '../../core/BaseModel';
 import { IMaskLayerStyleOptions } from '../../core/interface';
 import { polygonTriangulation } from '../../core/triangulation';
-import mask_frag from '../shaders/mask_frag.glsl';
+import mask_frag from '../../shader/minify_frag.glsl';
 import mask_vert from '../shaders/mask_vert.glsl';
 
 export default class MaskModel extends BaseModel {
   public getUninforms() {
-    const {
-      opacity = 0,
-    } = this.layer.getLayerConfig() as IMaskLayerStyleOptions;
+    const { opacity = 1, color = '#000' } =
+      this.layer.getLayerConfig() as IMaskLayerStyleOptions;
     return {
       u_opacity: isNumber(opacity) ? opacity : 0.0,
+      u_color: rgb2arr(color),
     };
   }
 
-  public initModels(): IModel[] {
+  public async initModels(): Promise<IModel[]> {
     return this.buildModels();
   }
 
-  public buildModels(): IModel[] {
-    return [
-      this.layer.buildLayerModel({
-        moduleName: 'mask',
-        vertexShader: mask_vert,
-        fragmentShader: mask_frag,
-        triangulation: polygonTriangulation,
-        blend: this.getBlend(),
-        depth: { enable: false },
-
-        stencil: {
-          enable: true,
-          mask: 0xff,
-          func: {
-            cmp: gl.ALWAYS,
-            ref: 1,
-            mask: 0xff,
-          },
-          opFront: {
-            fail: gl.REPLACE,
-            zfail: gl.REPLACE,
-            zpass: gl.REPLACE,
-          },
-        },
-      }),
-    ];
+  public async buildModels(): Promise<IModel[]> {
+    const model = await this.layer.buildLayerModel({
+      moduleName: 'mask',
+      vertexShader: mask_vert,
+      fragmentShader: mask_frag,
+      triangulation: polygonTriangulation,
+      depth: { enable: false },
+      pick: false,
+    });
+    return [model];
   }
 
-  public clearModels() {
-    this.dataTexture?.destroy();
-    this.layerService.clear();
+  public clearModels(refresh = true) {
+    if (refresh) {
+      this.layerService.clear();
+    }
   }
 
   protected registerBuiltinAttributes() {

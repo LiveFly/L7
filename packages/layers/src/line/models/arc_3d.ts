@@ -8,7 +8,7 @@ import {
   IModelUniform,
   ITexture2D,
 } from '@antv/l7-core';
-import { getMask, rgb2arr } from '@antv/l7-utils';
+import { rgb2arr } from '@antv/l7-utils';
 import { isNumber } from 'lodash';
 import BaseModel from '../../core/BaseModel';
 import { ILineLayerStyleOptions } from '../../core/interface';
@@ -118,12 +118,12 @@ export default class Arc3DModel extends BaseModel {
   public getAnimateUniforms(): IModelUniform {
     const { animateOption } = this.layer.getLayerConfig() as ILayerConfig;
     return {
-      u_aimate: this.animateOption2Array(animateOption as IAnimateOption),
+      u_animate: this.animateOption2Array(animateOption as IAnimateOption),
       u_time: this.layer.getLayerAnimateTime(),
     };
   }
 
-  public initModels(): IModel[] {
+  public async initModels(): Promise<IModel[]> {
     this.updateTexture();
     this.iconService.on('imageUpdate', this.updateTexture);
 
@@ -137,49 +137,40 @@ export default class Arc3DModel extends BaseModel {
   }
 
   public getShaders(): { frag: string; vert: string; type: string } {
-    const {
-      sourceColor,
-      targetColor,
-    } = this.layer.getLayerConfig() as ILineLayerStyleOptions;
+    const { sourceColor, targetColor } =
+      this.layer.getLayerConfig() as ILineLayerStyleOptions;
 
     if (sourceColor && targetColor) {
       // 分离 linear 功能
       return {
         frag: arc3d_linear_frag,
         vert: arc3d_linear_vert,
-        type: 'linear',
+        type: 'Linear',
       };
     } else {
       return {
         frag: arc3d_line_frag,
         vert: arc3d_line_vert,
-        type: 'normal',
+        type: '',
       };
     }
   }
 
-  public buildModels(): IModel[] {
-    const {
-      segmentNumber = 30,
-      mask = false,
-      maskInside = true,
-    } = this.layer.getLayerConfig() as ILineLayerStyleOptions;
+  public async buildModels(): Promise<IModel[]> {
+    const { segmentNumber = 30 } =
+      this.layer.getLayerConfig() as ILineLayerStyleOptions;
     const { frag, vert, type } = this.getShaders();
-    return [
-      this.layer.buildLayerModel({
-        moduleName: 'arc3Dline' + type,
-        vertexShader: vert,
-        fragmentShader: frag,
-        triangulation: LineArcTriangulation,
-        blend: this.getBlend(),
-        segmentNumber,
-        // primitive: gl.POINTS,
-        stencil: getMask(mask, maskInside),
-      }),
-    ];
+
+    const model = await this.layer.buildLayerModel({
+      moduleName: 'lineArc3d' + type,
+      vertexShader: vert,
+      fragmentShader: frag,
+      triangulation: LineArcTriangulation,
+      segmentNumber,
+    });
+    return [model];
   }
   protected registerBuiltinAttributes() {
-    // point layer size;
     this.styleAttributeService.registerStyleAttribute({
       name: 'size',
       type: AttributeType.Attribute,
@@ -192,12 +183,7 @@ export default class Arc3DModel extends BaseModel {
           type: gl.FLOAT,
         },
         size: 1,
-        update: (
-          feature: IEncodeFeature,
-          featureIdx: number,
-          vertex: number[],
-          attributeIdx: number,
-        ) => {
+        update: (feature: IEncodeFeature) => {
           const { size = 1 } = feature;
           return Array.isArray(size) ? [size[0]] : [size as number];
         },
@@ -219,7 +205,6 @@ export default class Arc3DModel extends BaseModel {
           feature: IEncodeFeature,
           featureIdx: number,
           vertex: number[],
-          attributeIdx: number,
         ) => {
           return [vertex[3], vertex[4], vertex[5], vertex[6]];
         },
@@ -232,18 +217,12 @@ export default class Arc3DModel extends BaseModel {
       descriptor: {
         name: 'a_iconMapUV',
         buffer: {
-          // give the WebGL driver a hint that this buffer may change
           usage: gl.DYNAMIC_DRAW,
           data: [],
           type: gl.FLOAT,
         },
         size: 2,
-        update: (
-          feature: IEncodeFeature,
-          featureIdx: number,
-          vertex: number[],
-          attributeIdx: number,
-        ) => {
+        update: (feature: IEncodeFeature) => {
           const iconMap = this.iconService.getIconMap();
           const { texture } = feature;
           const { x, y } = iconMap[texture as string] || { x: 0, y: 0 };

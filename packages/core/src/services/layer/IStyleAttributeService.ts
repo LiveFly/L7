@@ -4,7 +4,6 @@ import {
 } from '../renderer/IAttribute';
 import { IBufferInitializationOptions } from '../renderer/IBuffer';
 import { IElements } from '../renderer/IElements';
-import { IParseDataItem, IParserData } from '../source/ISourceService';
 import { ILayer } from './ILayerService';
 
 /**
@@ -178,6 +177,7 @@ export type Triangulation = (
   size: number;
   normals?: number[];
   indexes?: number[];
+  count?: number;
 };
 
 export interface IStyleAttributeUpdateOptions {
@@ -185,10 +185,6 @@ export interface IStyleAttributeUpdateOptions {
 }
 
 export interface IStyleAttributeService {
-  // registerDefaultStyleOptions(
-  //   layerName: string,
-  //   options: ILayerStyleOptions,
-  // ): void;
   attributesAndIndices: {
     attributes: {
       [attributeName: string]: IAttribute;
@@ -198,6 +194,7 @@ export interface IStyleAttributeService {
   registerStyleAttribute(
     options: Partial<IStyleAttributeInitializationOptions>,
   ): IStyleAttribute;
+  updateScaleAttribute(scale: IScaleOptions): void;
   updateStyleAttribute(
     attributeName: string,
     attributeOptions: Partial<IStyleAttributeInitializationOptions>,
@@ -215,7 +212,13 @@ export interface IStyleAttributeService {
       [attributeName: string]: IAttribute;
     };
     elements: IElements;
+    count: number | null;
   };
+  createAttributesAndIndicesAscy(
+    encodedFeatures: IEncodeFeature[],
+    segmentNumber?: number,
+    workerOptions?: any,
+  ): Promise<any>;
   /**
    * 根据 feature range 更新指定属性
    */
@@ -224,6 +227,7 @@ export interface IStyleAttributeService {
     features: IEncodeFeature[],
     startFeatureIdx?: number,
     endFeatureIdx?: number,
+    layer?: ILayer,
   ): void;
   /**
    * 清除当前管理的所有属性

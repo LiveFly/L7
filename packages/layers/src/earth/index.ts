@@ -1,3 +1,4 @@
+import { ISourceCFG } from '@antv/l7-core';
 import BaseLayer from '../core/BaseLayer';
 import EarthAtomSphereModel from './models/atmosphere';
 import BaseEarthModel from './models/base';
@@ -20,11 +21,22 @@ const earthLayerTypes = ['base', 'atomSphere', 'bloomSphere'];
 
 export default class EarthLayer extends BaseLayer<IEarthLayerStyleOptions> {
   public type: string = 'EarthLayer';
+  public defaultSourceConfig: {
+    data: any[];
+    options: ISourceCFG | undefined;
+  } = {
+    data: [],
+    options: {
+      parser: {
+        type: 'json',
+      },
+    },
+  };
 
-  public buildModels() {
+  public async buildModels() {
     const shape = this.getModelType();
     this.layerModel = new EarthModels[shape](this);
-    this.models = this.layerModel.initModels();
+    await this.initLayerModels();
   }
 
   /**
@@ -35,14 +47,13 @@ export default class EarthLayer extends BaseLayer<IEarthLayerStyleOptions> {
     if (this.layerModel && this.layerModel.setEarthTime) {
       this.layerModel.setEarthTime(time);
     } else {
-      console.error('请在 scene loaded 之后执行该方法！');
+      console.warn('请在 scene loaded 之后执行该方法！');
     }
   }
 
-  protected getModelType(): EarthModelType {
-    const shapeAttribute = this.styleAttributeService.getLayerStyleAttribute(
-      'shape',
-    );
+  public getModelType(): EarthModelType {
+    const shapeAttribute =
+      this.styleAttributeService.getLayerStyleAttribute('shape');
     let shape = (shapeAttribute?.scale?.field || 'base') as string;
     if (earthLayerTypes.indexOf(shape) < 0) {
       shape = 'base';

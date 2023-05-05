@@ -16,6 +16,7 @@ import { ICameraService } from './services/camera/ICameraService';
 import { IControlService } from './services/component/IControlService';
 import { IGlobalConfigService } from './services/config/IConfigService';
 import { ICoordinateSystemService } from './services/coordinate/ICoordinateSystemService';
+import { IDebugService } from './services/debug/IDebugService';
 import { IInteractionService } from './services/interaction/IInteractionService';
 import { IPickingService } from './services/interaction/IPickingService';
 import { ILayerService } from './services/layer/ILayerService';
@@ -32,6 +33,7 @@ import MarkerService from './services/component/MarkerService';
 import PopupService from './services/component/PopupService';
 import GlobalConfigService from './services/config/ConfigService';
 import CoordinateSystemService from './services/coordinate/CoordinateSystemService';
+import DebugService from './services/debug/DebugService';
 import InteractionService from './services/interaction/InteractionService';
 import PickingService from './services/interaction/PickingService';
 import LayerService from './services/layer/LayerService';
@@ -93,7 +95,7 @@ export const lazyInject = (
   const original = DECORATORS.lazyInject(serviceIdentifier);
   // the 'descriptor' parameter is actually always defined for class fields for Babel, but is considered undefined for TSC
   // so we just hack it with ?/! combination to avoid "TS1240: Unable to resolve signature of property decorator when called as an expression"
-  return function(
+  return function (
     this: any,
     proto: any,
     key: string,
@@ -115,7 +117,7 @@ export const lazyMultiInject = (
   const original = DECORATORS.lazyMultiInject(serviceIdentifier);
   // the 'descriptor' parameter is actually always defined for class fields for Babel, but is considered undefined for TSC
   // so we just hack it with ?/! combination to avoid "TS1240: Unable to resolve signature of property decorator when called as an expression"
-  return function(
+  return function (
     this: any,
     proto: any,
     key: string,
@@ -125,6 +127,7 @@ export const lazyMultiInject = (
     original.call(this, proto, key);
     if (descriptor) {
       // return link to proto, so own value wont be 'undefined' after component's creation
+      // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
       descriptor!.initializer = () => {
         return proto[key];
       };
@@ -151,6 +154,10 @@ export function createSceneContainer() {
   sceneContainer
     .bind<ILayerService>(TYPES.ILayerService)
     .to(LayerService)
+    .inSingletonScope();
+  sceneContainer
+    .bind<IDebugService>(TYPES.IDebugService)
+    .to(DebugService)
     .inSingletonScope();
   sceneContainer
     .bind<ISceneService>(TYPES.ISceneService)
@@ -213,8 +220,9 @@ export function createSceneContainer() {
     .whenTargetNamed('taa');
   sceneContainer
     .bind<interfaces.Factory<IPass<unknown>>>(TYPES.IFactoryNormalPass)
-    .toFactory<IPass<unknown>>((context) => (named: string) =>
-      context.container.getNamed<IPass<unknown>>(TYPES.INormalPass, named),
+    .toFactory<IPass<unknown>>(
+      (context) => (named: string) =>
+        context.container.getNamed<IPass<unknown>>(TYPES.INormalPass, named),
     );
 
   // 绑定 post processing passes
@@ -288,6 +296,5 @@ export function createLayerContainer(sceneContainer: Container) {
     .bind<IPostProcessor>(TYPES.IPostProcessor)
     .to(PostProcessor)
     .inSingletonScope();
-
   return layerContainer;
 }

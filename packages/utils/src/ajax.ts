@@ -1,10 +1,12 @@
-// @ts-ignore
-import * as GeoTIFF from 'geotiff';
-import { getReferrer } from './env';
 import { $window, $XMLHttpRequest } from './mini-adapter';
 
-export type RequestParameters = {
+export interface ITileBand {
   url: string;
+  bands: number[];
+}
+
+export type RequestParameters = {
+  url: string | string[] | ITileBand[];
   headers?: any;
   method?: 'GET' | 'POST' | 'PUT';
   body?: string;
@@ -15,10 +17,11 @@ export type RequestParameters = {
 };
 
 export type ResponseCallback<T> = (
-  error?: Error | null,
+  error?: Error | Error[] | null,
   data?: T | null,
   cacheControl?: string | null,
   expires?: string | null,
+  xhr?: any,
 ) => void;
 
 export class AJAXError extends Error {
@@ -51,69 +54,16 @@ export class AJAXError extends Error {
   }
 }
 
-function makeFetchRequest(
-  requestParameters: RequestParameters,
-  callback: ResponseCallback<any>,
-) {
-  const request = new Request(requestParameters.url, {
-    method: requestParameters.method || 'GET',
-    body: requestParameters.body,
-    credentials: requestParameters.credentials,
-    headers: requestParameters.headers,
-    referrer: getReferrer(),
-    signal: requestParameters?.signal,
-  });
-
-  if (requestParameters.type === 'json') {
-    request.headers.set('Accept', 'application/json');
-  }
-
-  return fetch(request)
-    .then((response) => {
-      if (response.ok) {
-        return (requestParameters.type === 'arrayBuffer'
-          ? response.arrayBuffer()
-          : requestParameters.type === 'json'
-          ? response.json()
-          : response.text()
-        )
-          .then((result) => {
-            callback(
-              null,
-              result,
-              response.headers.get('Cache-Control'),
-              response.headers.get('Expires'),
-            );
-          })
-          .catch((err) => {
-            callback(new Error(err.message));
-          });
-      }
-      return response
-        .blob()
-        .then((body) =>
-          callback(
-            new AJAXError(
-              response.status,
-              response.statusText,
-              requestParameters.url,
-              body,
-            ),
-          ),
-        );
-    })
-    .catch((error) => {
-      callback(new Error(error.message));
-    });
-}
-
 function makeXMLHttpRequest(
   requestParameters: RequestParameters,
   callback: ResponseCallback<any>,
 ) {
   const xhr = new $XMLHttpRequest();
 
-  xhr.open(requestParameters.method || 'GET', requestParameters.url, true);
+  const url = Array.isArray(requestParameters.url)
+    ? requestParameters.url[0]
+    : requestParameters.url;
+  xhr.open(requestParameters.method || 'GET', url, true);
   if (requestParameters.type === 'arrayBuffer') {
     xhr.responseType = 'arraybuffer';
   }
@@ -136,6 +86,7 @@ function makeXMLHttpRequest(
       xhr.response !== null
     ) {
       let data: unknown = xhr.response;
+
       if (requestParameters.type === 'json') {
         // We're manually parsing JSON here to get better error messages.
         try {
@@ -149,19 +100,52 @@ function makeXMLHttpRequest(
         data,
         xhr.getResponseHeader('Cache-Control'),
         xhr.getResponseHeader('Expires'),
+        xhr,
       );
     } else {
       const body = new Blob([xhr.response], {
         type: xhr.getResponseHeader('Content-Type'),
       });
-      callback(
-        new AJAXError(xhr.status, xhr.statusText, requestParameters.url, body),
-      );
+      callback(new AJAXError(xhr.status, xhr.statusText, url.toString(), body));
     }
   };
   xhr.send(requestParameters.body);
 
   return xhr;
+}
+
+export interface IXhrRequestResult {
+  err?: Error | Error[] | null;
+  data?: any | null;
+  cacheControl?: string | null;
+  expires?: string | null;
+  xhr?: any;
+}
+export function makeXMLHttpRequestPromise(
+  requestParameters: RequestParameters,
+): Promise<IXhrRequestResult> {
+  return new Promise((resolve, reject) => {
+    makeXMLHttpRequest(
+      requestParameters,
+      (error, data, cacheControl, expires, xhr) => {
+        if (error) {
+          reject({
+            err: error,
+            data: null,
+            xhr,
+          });
+        } else {
+          resolve({
+            err: null,
+            data,
+            cacheControl,
+            expires,
+            xhr,
+          });
+        }
+      },
+    );
+  });
 }
 
 function makeRequest(
@@ -195,7 +179,7 @@ export const postData = (
   return makeRequest({ ...requestParameters, method: 'POST' }, callback);
 };
 
-function sameOrigin(url: string) {
+export function sameOrigin(url: string) {
   const a = $window.document.createElement('a');
   a.href = url;
   return (
@@ -256,54 +240,44 @@ function arrayBufferToImageBitmap(
 export const getImage = (
   requestParameters: RequestParameters,
   callback: ResponseCallback<HTMLImageElement | ImageBitmap | null>,
+  transformResponse?: (response: object) => any,
 ) => {
   // request the image with XHR to work around caching issues
   // see https://github.com/mapbox/mapbox-gl-js/issues/1470
-  return getArrayBuffer(requestParameters, (err, imgData) => {
+  const optionFunc = (
+    err?: Error | Error[] | null,
+    imgData?: ArrayBuffer | null,
+  ) => {
     if (err) {
       callback(err);
     } else if (imgData) {
       const imageBitmapSupported = typeof createImageBitmap === 'function';
+      const transformImgData = transformResponse
+        ? transformResponse(imgData)
+        : imgData;
       if (imageBitmapSupported) {
-        arrayBufferToImageBitmap(imgData, callback);
+        arrayBufferToImageBitmap(transformImgData, callback);
       } else {
-        arrayBufferToImage(imgData, callback);
+        arrayBufferToImage(transformImgData, callback);
       }
     }
-  });
-};
+  };
 
-const arrayBufferToTiffImage = async (
-  data: ArrayBuffer,
-  callback: (err?: Error | null, image?: any) => void,
-  rasterParser: any,
-) => {
-  try {
-    const { rasterData, width, height } = await rasterParser(data);
-    const defaultMIN = 0;
-    const defaultMAX = 8000;
-    callback(null, {
-      data: rasterData,
-      width,
-      height,
-      min: defaultMIN,
-      max: defaultMAX,
-    });
-  } catch (err) {
-    callback(null, new Error('' + err));
+  if (requestParameters.type === 'json') {
+    return getJSON(requestParameters, optionFunc);
+  } else {
+    return getArrayBuffer(requestParameters, optionFunc);
   }
 };
 
-export const getTiffImage = (
-  requestParameters: RequestParameters,
+export const formatImage = (
+  imgData: ArrayBuffer,
   callback: ResponseCallback<HTMLImageElement | ImageBitmap | null>,
-  rasterParser: any,
 ) => {
-  return getArrayBuffer(requestParameters, (err, imgData) => {
-    if (err) {
-      callback(err);
-    } else if (imgData) {
-      arrayBufferToTiffImage(imgData, callback, rasterParser);
-    }
-  });
+  const imageBitmapSupported = typeof createImageBitmap === 'function';
+  if (imageBitmapSupported) {
+    arrayBufferToImageBitmap(imgData, callback);
+  } else {
+    arrayBufferToImage(imgData, callback);
+  }
 };

@@ -2,17 +2,11 @@ import { IMapCamera, IViewport } from '@antv/l7-core';
 import WebMercatorViewport from 'viewport-mercator-project';
 
 export default class Viewport implements IViewport {
-  private viewport: WebMercatorViewport;
+  public viewport: WebMercatorViewport;
 
   public syncWithMapCamera(mapCamera: Partial<IMapCamera>) {
-    const {
-      center,
-      zoom,
-      pitch,
-      bearing,
-      viewportHeight,
-      viewportWidth,
-    } = mapCamera;
+    const { center, zoom, pitch, bearing, viewportHeight, viewportWidth } =
+      mapCamera;
 
     /**
      * Deck.gl 使用的也是 Mapbox 同步相机，相机参数保持一致

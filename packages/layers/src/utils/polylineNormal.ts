@@ -1,4 +1,4 @@
-import { aProjectFlat, lngLatToMeters } from '@antv/l7-utils';
+import { aProjectFlat } from '@antv/l7-utils';
 import { vec2 } from 'gl-matrix';
 export function computeMiter(
   tangent: vec2,
@@ -57,7 +57,7 @@ function isPointEqual(a: vec2, b: vec2) {
   return a[0] === b[0] && a[1] === b[1];
 }
 
-export default function(
+export default function (
   points: number[][],
   closed: boolean,
   indexOffset: number,

@@ -8,7 +8,7 @@ import {
   IModelUniform,
   ITexture2D,
 } from '@antv/l7-core';
-import { getMask, rgb2arr } from '@antv/l7-utils';
+import { rgb2arr } from '@antv/l7-utils';
 import { isNumber } from 'lodash';
 import BaseModel from '../../core/BaseModel';
 import { ILineLayerStyleOptions } from '../../core/interface';
@@ -99,6 +99,7 @@ export default class ArcModel extends BaseModel {
       u_cellTypeLayout: this.getCellTypeLayout(),
 
       u_thetaOffset: isNumber(thetaOffset) ? thetaOffset : 0.0,
+      // u_thetaOffset:  0.0,
       u_opacity: isNumber(opacity) ? opacity : 1.0,
       u_textureBlend: textureBlend === 'normal' ? 0.0 : 1.0,
       segmentNumber,
@@ -123,12 +124,12 @@ export default class ArcModel extends BaseModel {
   public getAnimateUniforms(): IModelUniform {
     const { animateOption } = this.layer.getLayerConfig() as ILayerConfig;
     return {
-      u_aimate: this.animateOption2Array(animateOption as IAnimateOption),
+      u_animate: this.animateOption2Array(animateOption as IAnimateOption),
       u_time: this.layer.getLayerAnimateTime(),
     };
   }
 
-  public initModels(): IModel[] {
+  public async initModels(): Promise<IModel[]> {
     this.updateTexture();
     this.iconService.on('imageUpdate', this.updateTexture);
 
@@ -142,16 +143,13 @@ export default class ArcModel extends BaseModel {
   }
 
   public getShaders(): { frag: string; vert: string; type: string } {
-    const {
-      sourceColor,
-      targetColor,
-      lineType,
-    } = this.layer.getLayerConfig() as ILineLayerStyleOptions;
+    const { sourceColor, targetColor, lineType } =
+      this.layer.getLayerConfig() as ILineLayerStyleOptions;
     if (lineType === 'dash') {
       return {
         frag: arc_dash_frag,
         vert: arc_dash_vert,
-        type: 'dash',
+        type: 'Dash',
       };
     }
 
@@ -160,40 +158,34 @@ export default class ArcModel extends BaseModel {
       return {
         frag: arc_linear_frag,
         vert: arc_linear_vert,
-        type: 'linear',
+        type: 'Linear',
       };
     } else {
       return {
         frag: arc_line_frag,
         vert: arc_line_vert,
-        type: 'normal',
+        type: '',
       };
     }
   }
 
-  public buildModels(): IModel[] {
-    const {
-      segmentNumber = 30,
-      mask = false,
-      maskInside = true,
-    } = this.layer.getLayerConfig() as ILineLayerStyleOptions;
+  public async buildModels(): Promise<IModel[]> {
+    const { segmentNumber = 30 } =
+      this.layer.getLayerConfig() as ILineLayerStyleOptions;
     const { frag, vert, type } = this.getShaders();
-    return [
-      this.layer.buildLayerModel({
-        moduleName: 'arc2dline' + type,
-        vertexShader: vert,
-        fragmentShader: frag,
-        triangulation: LineArcTriangulation,
-        depth: { enable: false },
-        blend: this.getBlend(),
-        segmentNumber,
-        stencil: getMask(mask, maskInside),
-      }),
-    ];
+    //
+    const model = await this.layer.buildLayerModel({
+      moduleName: 'lineArc2d' + type,
+      vertexShader: vert,
+      fragmentShader: frag,
+      triangulation: LineArcTriangulation,
+      depth: { enable: false },
+      segmentNumber,
+    });
+    return [model];
   }
 
   protected registerBuiltinAttributes() {
-    // point layer size;
     this.styleAttributeService.registerStyleAttribute({
       name: 'size',
       type: AttributeType.Attribute,
@@ -206,12 +198,7 @@ export default class ArcModel extends BaseModel {
           type: gl.FLOAT,
         },
         size: 1,
-        update: (
-          feature: IEncodeFeature,
-          featureIdx: number,
-          vertex: number[],
-          attributeIdx: number,
-        ) => {
+        update: (feature: IEncodeFeature) => {
           const { size = 1 } = feature;
           return Array.isArray(size) ? [size[0]] : [size as number];
         },
@@ -233,7 +220,6 @@ export default class ArcModel extends BaseModel {
           feature: IEncodeFeature,
           featureIdx: number,
           vertex: number[],
-          attributeIdx: number,
         ) => {
           return [vertex[3], vertex[4], vertex[5], vertex[6]];
         },
@@ -252,12 +238,7 @@ export default class ArcModel extends BaseModel {
           type: gl.FLOAT,
         },
         size: 2,
-        update: (
-          feature: IEncodeFeature,
-          featureIdx: number,
-          vertex: number[],
-          attributeIdx: number,
-        ) => {
+        update: (feature: IEncodeFeature) => {
           const iconMap = this.iconService.getIconMap();
           const { texture } = feature;
           const { x, y } = iconMap[texture as string] || { x: 0, y: 0 };

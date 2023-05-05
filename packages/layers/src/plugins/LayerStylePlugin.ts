@@ -1,4 +1,4 @@
-import { ILayer, ILayerPlugin, IMapService, TYPES } from '@antv/l7-core';
+import { ILayer, ILayerPlugin } from '@antv/l7-core';
 import { injectable } from 'inversify';
 import 'reflect-metadata';
 /**
@@ -8,13 +8,10 @@ import 'reflect-metadata';
 export default class LayerStylePlugin implements ILayerPlugin {
   public apply(layer: ILayer) {
     layer.hooks.afterInit.tap('LayerStylePlugin', () => {
-      // 更新图层默认状态
-      layer.updateLayerConfig({});
       const { autoFit, fitBoundsOptions } = layer.getLayerConfig();
+      // mask 初始化
       if (autoFit) {
-        setTimeout(() => {
-          layer.fitBounds(fitBoundsOptions);
-        }, 100);
+        layer.fitBounds(fitBoundsOptions);
       }
     });
   }

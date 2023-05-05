@@ -18,8 +18,10 @@ const DragEventMap: { [key: string]: string } = {
  * 除此之外，后续如果支持非地图场景，事件监听就需要注册在 L7 canvas 上。
  */
 @injectable()
-export default class InteractionService extends EventEmitter
-  implements IInteractionService {
+export default class InteractionService
+  extends EventEmitter
+  implements IInteractionService
+{
   public indragging: boolean = false;
   @inject(TYPES.IMapService)
   private readonly mapService: IMapService;
@@ -107,7 +109,7 @@ export default class InteractionService extends EventEmitter
         this.hammertime = hammertime;
       }
 
-      // // TODO: 根据场景注册事件到 L7 canvas 上
+      // Tip: 根据场景注册事件到 L7 canvas 上
     }
   }
   private removeEventListenerOnMap() {

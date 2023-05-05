@@ -2,10 +2,11 @@ import {
   AttributeType,
   gl,
   IEncodeFeature,
+  IModel,
   IModelUniform,
   ITexture2D,
 } from '@antv/l7-core';
-import { getMask, isMini } from '@antv/l7-utils';
+import { isMini } from '@antv/l7-utils';
 import BaseModel from '../../core/BaseModel';
 import { IImageLayerStyleOptions } from '../../core/interface';
 import { RasterImageTriangulation } from '../../core/triangulation';
@@ -21,12 +22,8 @@ export default class ImageModel extends BaseModel {
       u_texture: this.texture,
     };
   }
-  public initModels() {
-    const {
-      mask = false,
-      maskInside = true,
-    } = this.layer.getLayerConfig() as IImageLayerStyleOptions;
 
+  public async initModels(): Promise<IModel[]> {
     const source = this.layer.getSource();
     const { createTexture2D } = this.rendererService;
     this.texture = createTexture2D({
@@ -47,61 +44,50 @@ export default class ImageModel extends BaseModel {
           width: img.width,
           height: img.height,
         });
-        this.layerService.updateLayerRenderList();
-        this.layerService.renderLayers();
+        this.layerService.reRender();
       };
     } else {
-      source.data.images.then(
-        (imageData: Array<HTMLImageElement | ImageBitmap>) => {
-          this.texture = createTexture2D({
-            data: imageData[0],
-            width: imageData[0].width,
-            height: imageData[0].height,
-          });
-          this.layerService.updateLayerRenderList();
-          this.layerService.renderLayers();
-        },
-      );
+      const imageData = await source.data.images;
+
+      this.texture = createTexture2D({
+        data: imageData[0],
+        width: imageData[0].width,
+        height: imageData[0].height,
+        mag: gl.LINEAR,
+        min: gl.LINEAR,
+      });
     }
 
-    return [
-      this.layer.buildLayerModel({
-        moduleName: 'RasterImage',
-        vertexShader: ImageVert,
-        fragmentShader: ImageFrag,
-        triangulation: RasterImageTriangulation,
-        primitive: gl.TRIANGLES,
-        depth: { enable: false },
-        blend: this.getBlend(),
-        stencil: getMask(mask, maskInside),
-      }),
-    ];
+    const model = await this.layer.buildLayerModel({
+      moduleName: 'rasterImage',
+      vertexShader: ImageVert,
+      fragmentShader: ImageFrag,
+      triangulation: RasterImageTriangulation,
+      primitive: gl.TRIANGLES,
+      blend: {
+        // Tip: 优化显示效果
+        enable: true,
+      },
+      depth: { enable: false },
+    });
+    return [model];
   }
-  public buildModels() {
+
+  public clearModels(): void {
+    this.texture?.destroy();
+  }
+
+  public async buildModels(): Promise<IModel[]> {
     return this.initModels();
   }
 
-  protected getConfigSchema() {
-    return {
-      properties: {
-        opacity: {
-          type: 'number',
-          minimum: 0,
-          maximum: 1,
-        },
-      },
-    };
-  }
-
   protected registerBuiltinAttributes() {
-    // point layer size;
     this.styleAttributeService.registerStyleAttribute({
       name: 'uv',
       type: AttributeType.Attribute,
       descriptor: {
         name: 'a_Uv',
         buffer: {
-          // give the WebGL driver a hint that this buffer may change
           usage: gl.DYNAMIC_DRAW,
           data: [],
           type: gl.FLOAT,
@@ -111,7 +97,6 @@ export default class ImageModel extends BaseModel {
           feature: IEncodeFeature,
           featureIdx: number,
           vertex: number[],
-          attributeIdx: number,
         ) => {
           return [vertex[3], vertex[4]];
         },

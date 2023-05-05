@@ -1,10 +1,11 @@
 #define Animate 0.0
 #define LineTexture 1.0
-uniform float u_blur : 0.99;
 uniform float u_opacity : 1.0;
 uniform float u_textureBlend;
 
 uniform float u_borderWidth: 0.0;
+
+uniform vec3 u_blur;
 uniform vec4 u_borderColor;
 varying vec4 v_color;
 
@@ -18,7 +19,7 @@ varying vec2 v_iconMapUV;
 #pragma include "picking"
 
 uniform float u_time;
-uniform vec4 u_aimate: [ 0, 2., 1.0, 0.2 ]; // 控制运动
+uniform vec4 u_animate: [ 1, 2., 1.0, 0.2 ]; // 控制运动
 
 varying mat4 styleMappingMat;
 // [animate, duration, interval, trailLength],
@@ -30,10 +31,10 @@ void main() {
   // anti-alias
   // float blur = 1.0 - smoothstep(u_blur, 1., length(v_normal.xy));
   gl_FragColor.a *= opacity; // 全局透明度
-  if(u_aimate.x == Animate) {
-      animateSpeed = u_time / u_aimate.y;
-       float alpha =1.0 - fract( mod(1.0- d_distance_ratio, u_aimate.z)* (1.0/ u_aimate.z) + animateSpeed);
-      alpha = (alpha + u_aimate.w -1.0) / u_aimate.w;
+  if(u_animate.x == Animate) {
+      animateSpeed = u_time / u_animate.y;
+       float alpha =1.0 - fract( mod(1.0- d_distance_ratio, u_animate.z)* (1.0/ u_animate.z) + animateSpeed);
+      alpha = (alpha + u_animate.w -1.0) / u_animate.w;
       alpha = smoothstep(0., 1., alpha);
       gl_FragColor.a *= alpha;
   }
@@ -86,5 +87,13 @@ void main() {
     }
   }
 
+  // blur
+  float blurV = styleMappingMat[3][3];
+  if(blurV < 0.5) {
+    gl_FragColor.a *= mix(u_blur.r, u_blur.g, blurV/0.5);
+  } else {
+    gl_FragColor.a *= mix(u_blur.g, u_blur.b, (blurV - 0.5)/0.5);
+  }
+  
   gl_FragColor = filterColor(gl_FragColor);
 }

@@ -2,12 +2,10 @@ import {
   ILayer,
   IMapService,
   IRendererService,
-  IScaleValue,
   ISource,
   ISubLayerInitOptions,
-  ScaleAttributeType,
 } from '@antv/l7-core';
-import { Tile } from '@antv/l7-utils';
+import { SourceTile } from '@antv/l7-utils';
 
 export type Timeout = any;
 export type CacheEvent =
@@ -29,27 +27,24 @@ export interface ITileStyles {
 
 export interface ILayerTileConfig {
   L7Layer?: any;
-  tile: Tile;
+  tile: SourceTile;
   initOptions: ISubLayerInitOptions;
   vectorTileLayer?: any;
   source: ISource;
+  needListen?: boolean;
 }
 
 export interface ITileFactory {
+  loaded: boolean;
+  layers: ILayer[];
   createTile(
-    tile: Tile,
+    tile: SourceTile,
     initOptions: ISubLayerInitOptions,
   ): {
     layers: ILayer[];
-    layerIDList: string[];
   };
 
   createLayer(option: ILayerTileConfig): ILayer;
 
   updateStyle(styles: ITileStyles): string;
-  setStyleAttributeField(
-    layer: ILayer,
-    type: ScaleAttributeType,
-    value: IScaleValue,
-  ): void;
 }

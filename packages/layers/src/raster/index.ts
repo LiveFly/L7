@@ -3,45 +3,35 @@ import { IRasterLayerStyleOptions } from '../core/interface';
 import RasterModels, { RasterModelType } from './models/index';
 export default class RaterLayer extends BaseLayer<IRasterLayerStyleOptions> {
   public type: string = 'RasterLayer';
-  public buildModels() {
+  public async buildModels() {
     const modelType = this.getModelType();
     this.layerModel = new RasterModels[modelType](this);
-    this.models = this.layerModel.initModels();
+    await this.initLayerModels();
   }
-  public rebuildModels() {
-    this.models = this.layerModel.buildModels();
-  }
-  protected getConfigSchema() {
-    return {
-      properties: {
-        opacity: {
-          type: 'number',
-          minimum: 0,
-          maximum: 1,
-        },
-      },
-    };
-  }
+
   protected getDefaultConfig() {
     const type = this.getModelType();
     const defaultConfig = {
       raster: {},
+      rasterRgb: {},
       raster3d: {},
-      rasterTile: {},
+      rasterTerrainRgb: {},
     };
     return defaultConfig[type];
   }
 
-  protected getModelType(): RasterModelType {
+  public getModelType(): RasterModelType {
     // 根据 source 的类型判断 model type
-    switch (this.layerSource.parser.type) {
+    const parserType = this.layerSource.getParserType();
+    switch (parserType) {
       case 'raster':
         return 'raster';
-      case 'rasterTile':
-        return 'rasterTile';
+      case 'rasterRgb':
+        return 'rasterRgb';
+      case 'image':
+        return 'rasterTerrainRgb';
       default:
         return 'raster';
     }
-    // return 'raster';
   }
 }

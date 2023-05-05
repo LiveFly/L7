@@ -19,18 +19,23 @@ import {
   IModelUniform,
   IPickingService,
   IRendererService,
+  IRenderOptions,
   IShaderModuleService,
+  IStencilOptions,
   IStyleAttributeService,
   ITexture2D,
   ITexture2DInitializationOptions,
   lazyInject,
+  MaskOperation,
+  StencilType,
   Triangulation,
   TYPES,
 } from '@antv/l7-core';
 import { rgb2arr } from '@antv/l7-utils';
 import { color } from 'd3-color';
-import { isEqual, isFunction, isNumber, isString } from 'lodash';
+import { isEqual, isNumber, isString } from 'lodash';
 import { BlendTypes } from '../utils/blend';
+import { getStencil, getStencilMask } from '../utils/stencil';
 
 export type styleSingle =
   | number
@@ -56,8 +61,10 @@ export interface ICellProperty {
   count: number;
 }
 
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
 export default class BaseModel<ChildLayerStyleOptions = {}>
-  implements ILayerModel {
+  implements ILayerModel
+{
   public triangulation: Triangulation;
 
   // style texture data mapping
@@ -81,7 +88,7 @@ export default class BaseModel<ChildLayerStyleOptions = {}>
   protected cellLength: number; // 单个 cell 的长度
   protected cellProperties: ICellProperty[]; // 需要进行数据映射的属性集合
   protected cellTypeLayout: number[];
-  protected stylePropertyesExist: {
+  protected stylePropertiesExist: {
     // 记录 style 属性是否存在的中间变量
     hasThetaOffset: number;
     hasOpacity: number;
@@ -164,7 +171,7 @@ export default class BaseModel<ChildLayerStyleOptions = {}>
       stroke: undefined,
       offsets: undefined,
     };
-    this.stylePropertyesExist = {
+    this.stylePropertiesExist = {
       hasThetaOffset: 0,
       hasOpacity: 0,
       hasStrokeOpacity: 0,
@@ -196,7 +203,7 @@ export default class BaseModel<ChildLayerStyleOptions = {}>
   public clearLastCalRes() {
     this.cellProperties = []; // 清空上一次计算的需要进行数据映射的属性集合
     this.cellLength = 0; // 清空上一次计算的 cell 的长度
-    this.stylePropertyesExist = {
+    this.stylePropertiesExist = {
       // 全量清空上一次是否需要对 style 属性进行数据映射的判断
       hasThetaOffset: 0,
       hasOpacity: 0,
@@ -216,13 +223,13 @@ export default class BaseModel<ChildLayerStyleOptions = {}>
         0.0,
         0.0,
         // 1
-        this.stylePropertyesExist.hasOpacity, // cell 中是否存在 opacity
-        this.stylePropertyesExist.hasStrokeOpacity, // cell 中是否存在 strokeOpacity
-        this.stylePropertyesExist.hasStrokeWidth, // cell 中是否存在 strokeWidth
-        this.stylePropertyesExist.hasStroke, // cell 中是否存在 stroke
+        this.stylePropertiesExist.hasOpacity, // cell 中是否存在 opacity
+        this.stylePropertiesExist.hasStrokeOpacity, // cell 中是否存在 strokeOpacity
+        this.stylePropertiesExist.hasStrokeWidth, // cell 中是否存在 strokeWidth
+        this.stylePropertiesExist.hasStroke, // cell 中是否存在 stroke
         // 2
-        this.stylePropertyesExist.hasOffsets, // cell 中是否存在 offsets
-        this.stylePropertyesExist.hasThetaOffset, // cell 中是否存在 thetaOffset
+        this.stylePropertiesExist.hasOffsets, // cell 中是否存在 offsets
+        this.stylePropertiesExist.hasThetaOffset, // cell 中是否存在 thetaOffset
         0.0,
         0.0,
         // 3
@@ -259,7 +266,7 @@ export default class BaseModel<ChildLayerStyleOptions = {}>
    * @returns
    */
   public dataTextureNeedUpdate(options: {
-    // TODO: thetaOffset 目前只有 lineLayer/arc 使用
+    // thetaOffset 目前只有 lineLayer/arc 使用
     thetaOffset?: styleSingle;
     opacity?: styleSingle;
     strokeOpacity?: styleSingle;
@@ -305,7 +312,7 @@ export default class BaseModel<ChildLayerStyleOptions = {}>
    * @param options
    */
   public judgeStyleAttributes(options: {
-    // TODO: 目前 thetaOffset 只有 lineLayer/arc 使用
+    // Tip: 目前 thetaOffset 只有 lineLayer/arc 使用
     thetaOffset?: styleSingle;
     opacity?: styleSingle;
     strokeOpacity?: styleSingle;
@@ -318,7 +325,7 @@ export default class BaseModel<ChildLayerStyleOptions = {}>
     if (options.opacity !== undefined && !isNumber(options.opacity)) {
       // 数据映射
       this.cellProperties.push({ attr: 'opacity', count: 1 });
-      this.stylePropertyesExist.hasOpacity = 1;
+      this.stylePropertiesExist.hasOpacity = 1;
       this.cellLength += 1;
     }
 
@@ -328,21 +335,21 @@ export default class BaseModel<ChildLayerStyleOptions = {}>
     ) {
       // 数据映射
       this.cellProperties.push({ attr: 'strokeOpacity', count: 1 });
-      this.stylePropertyesExist.hasStrokeOpacity = 1;
+      this.stylePropertiesExist.hasStrokeOpacity = 1;
       this.cellLength += 1;
     }
 
     if (options.strokeWidth !== undefined && !isNumber(options.strokeWidth)) {
       // 数据映射
       this.cellProperties.push({ attr: 'strokeWidth', count: 1 });
-      this.stylePropertyesExist.hasStrokeWidth = 1;
+      this.stylePropertiesExist.hasStrokeWidth = 1;
       this.cellLength += 1;
     }
 
     if (options.stroke !== undefined && !this.isStaticColor(options.stroke)) {
       // 数据映射
       this.cellProperties.push({ attr: 'stroke', count: 4 });
-      this.stylePropertyesExist.hasStroke = 1;
+      this.stylePropertiesExist.hasStroke = 1;
       this.cellLength += 4;
     }
 
@@ -352,17 +359,16 @@ export default class BaseModel<ChildLayerStyleOptions = {}>
     ) {
       // 数据映射
       this.cellProperties.push({ attr: 'offsets', count: 2 });
-      this.stylePropertyesExist.hasOffsets = 1;
+      this.stylePropertiesExist.hasOffsets = 1;
       this.cellLength += 2;
     }
 
     if (options.thetaOffset !== undefined && !isNumber(options.thetaOffset)) {
       // 数据映射
       this.cellProperties.push({ attr: 'thetaOffset', count: 1 });
-      this.stylePropertyesExist.hasThetaOffset = 1;
+      this.stylePropertiesExist.hasThetaOffset = 1;
       this.cellLength += 1;
     }
-    // console.log('this.cellLength', this.cellLength)
   }
 
   /**
@@ -500,6 +506,32 @@ export default class BaseModel<ChildLayerStyleOptions = {}>
     const { blend = 'normal' } = this.layer.getLayerConfig();
     return BlendTypes[BlendType[blend]] as IBlendOptions;
   }
+  public getStencil(option: Partial<IRenderOptions>): Partial<IStencilOptions> {
+    const {
+      mask = false,
+      maskInside = true,
+      enableMask,
+      maskOperation = MaskOperation.AND,
+    } = this.layer.getLayerConfig();
+    // TODO 临时处理，后期移除MaskLayer
+    if (this.layer.type === 'MaskLayer') {
+      return getStencilMask({
+        isStencil: true,
+        stencilType: StencilType.SINGLE,
+      }); // 用于遮罩的stencil 参数
+    }
+
+    if (option.isStencil) {
+      return getStencilMask({ ...option, maskOperation }); // 用于遮罩的stencil 参数
+    }
+
+    const maskflag =
+      mask || //  mask 兼容历史写法
+      (enableMask && this.layer.masks.length !== 0) || // 外部图层的mask
+      this.layer.tileMask !== undefined; // 瓦片图层
+    // !!(mask || enableMask || this.layer.tileMask);
+    return getStencil(maskflag, maskInside);
+  }
   public getDefaultStyle(): unknown {
     return {};
   }
@@ -511,16 +543,19 @@ export default class BaseModel<ChildLayerStyleOptions = {}>
     return {};
   }
 
-  public needUpdate(): boolean {
+  public async needUpdate(): Promise<boolean> {
     return false;
   }
-  public buildModels(): IModel[] {
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  public async buildModels(): Promise<IModel[]> {
     throw new Error('Method not implemented.');
   }
-  public initModels(): IModel[] {
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  public async initModels(): Promise<IModel[]> {
     throw new Error('Method not implemented.');
   }
-  public clearModels() {
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  public clearModels(refresh = true) {
     return;
   }
   public getAttribute(): {
@@ -531,7 +566,8 @@ export default class BaseModel<ChildLayerStyleOptions = {}>
   } {
     throw new Error('Method not implemented.');
   }
-  public render() {
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  public render(renderOptions?: Partial<IRenderOptions>): void {
     throw new Error('Method not implemented.');
   }
   protected registerBuiltinAttributes() {

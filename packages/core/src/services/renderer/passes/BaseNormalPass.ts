@@ -1,4 +1,4 @@
-import { inject, injectable } from 'inversify';
+import { injectable } from 'inversify';
 import 'reflect-metadata';
 import { TYPES } from '../../../types';
 import { ICameraService } from '../../camera/ICameraService';
@@ -14,7 +14,8 @@ import { IRendererService } from '../IRendererService';
  */
 @injectable()
 export default class BaseNormalPass<InitializationOptions = {}>
-  implements IPass<InitializationOptions> {
+  implements IPass<InitializationOptions>
+{
   // @inject(TYPES.IShaderModuleService)
   protected shaderModuleService: IShaderModuleService;
 
@@ -54,6 +55,7 @@ export default class BaseNormalPass<InitializationOptions = {}>
       .get<IShaderModuleService>(TYPES.IShaderModuleService);
   }
 
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   public render(layer: ILayer) {
     //
   }

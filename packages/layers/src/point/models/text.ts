@@ -2,16 +2,16 @@ import {
   AttributeType,
   gl,
   IEncodeFeature,
+  IFontMapping,
   IModel,
   IModelUniform,
   ITexture2D,
 } from '@antv/l7-core';
-import { boundsContains, getMask, padBounds } from '@antv/l7-utils';
-import { isNumber } from 'lodash';
+import { boundsContains, calculateCentroid, padBounds } from '@antv/l7-utils';
+import { isEqual, isNumber } from 'lodash';
 import BaseModel from '../../core/BaseModel';
 import { IPointLayerStyleOptions } from '../../core/interface';
 import CollisionIndex from '../../utils/collision-index';
-import { calculateCentroid } from '../../utils/geo';
 import {
   getGlyphQuads,
   IGlyphQuad,
@@ -98,21 +98,18 @@ export default class TextModel extends BaseModel {
       opacity = 1.0,
       stroke = '#fff',
       strokeWidth = 0,
-      textAnchor = 'center',
-      textAllowOverlap = false,
       halo = 0.5,
       gamma = 2.0,
       raisingHeight = 0,
     } = this.layer.getLayerConfig() as IPointLayerStyleOptions;
-    const { canvas, mapping } = this.fontService;
-    if (Object.keys(mapping).length !== this.textCount) {
+    const mapping = this.getFontServiceMapping();
+    const canvas = this.getFontServiceCanvas();
+    if (mapping && Object.keys(mapping).length !== this.textCount && canvas) {
       this.updateTexture();
       this.textCount = Object.keys(mapping).length;
     }
-    this.preTextStyle = {
-      textAnchor,
-      textAllowOverlap,
-    };
+
+    this.preTextStyle = this.getTextStyle();
 
     if (
       this.dataTextureTest &&
@@ -168,69 +165,101 @@ export default class TextModel extends BaseModel {
       u_sdf_map: this.texture,
       u_halo_blur: halo,
       u_gamma_scale: gamma,
-      u_sdf_map_size: [canvas.width, canvas.height],
+      u_sdf_map_size: [canvas?.width || 1, canvas?.height || 1],
     };
   }
 
-  public initModels(): IModel[] {
-    this.layer.on('remapping', this.buildModels);
+  public async initModels(): Promise<IModel[]> {
+    // 绑定事件
+    this.bindEvent();
     this.extent = this.textExtent();
-    const {
-      textAnchor = 'center',
-      textAllowOverlap = true,
-    } = this.layer.getLayerConfig() as IPointLayerStyleOptions;
-    this.preTextStyle = {
-      textAnchor,
-      textAllowOverlap,
-    };
+    this.preTextStyle = this.getTextStyle();
     return this.buildModels();
   }
 
-  public buildModels = () => {
-    const {
-      mask = false,
-      maskInside = true,
-    } = this.layer.getLayerConfig() as IPointLayerStyleOptions;
-    this.initGlyph();
+  public async buildModels(): Promise<IModel[]> {
+    const { textAllowOverlap = false } =
+      this.layer.getLayerConfig() as IPointLayerStyleOptions;
+
+    //  this.mapping(); 重复调用
+    this.initGlyph(); //
     this.updateTexture();
-    this.filterGlyphs();
-    this.reBuildModel();
-    return [
-      this.layer.buildLayerModel({
-        moduleName: 'pointText',
-        vertexShader: textVert,
-        fragmentShader: textFrag,
-        triangulation: TextTriangulation.bind(this),
-        depth: { enable: false },
-        blend: this.getBlend(),
-        stencil: getMask(mask, maskInside),
-      }),
-    ];
-  };
-  public needUpdate() {
+    if (!textAllowOverlap) {
+      this.filterGlyphs();
+    }
+    const model = await this.layer.buildLayerModel({
+      moduleName: 'pointText',
+      vertexShader: textVert,
+      fragmentShader: textFrag,
+      triangulation: TextTriangulation.bind(this),
+      depth: { enable: false },
+    });
+    return [model];
+  }
+  // 需要更新的场景
+  // 1. 文本偏移量发生改变
+  // 2. 文本锚点发生改变
+  // 3. 文本允许重叠发生改变
+  // 4. 文本字体发生改变
+  // 5. 文本字体粗细发生改变
+  public async needUpdate(): Promise<boolean> {
     const {
       textAllowOverlap = false,
-    } = this.layer.getLayerConfig() as IPointLayerStyleOptions;
+      textAnchor = 'center',
+      textOffset,
+      padding,
+      fontFamily,
+      fontWeight,
+    } = this.getTextStyle() as IPointLayerStyleOptions;
+    if (
+      !isEqual(padding, this.preTextStyle.padding) ||
+      !isEqual(textOffset, this.preTextStyle.textOffset) ||
+      !isEqual(textAnchor, this.preTextStyle.textAnchor) ||
+      !isEqual(fontFamily, this.preTextStyle.fontFamily) ||
+      !isEqual(fontWeight, this.preTextStyle.fontWeight)
+    ) {
+      await this.mapping();
+      return true;
+    }
+
+    // if (
+    //   JSON.stringify(textOffset) !==
+    //     JSON.stringify(this.preTextStyle.textOffset) ||
+    //   textAnchor !== this.preTextStyle.textAnchor
+    // ) {
+    //   await this.mapping();
+    //   return true;
+    // }
+    if (textAllowOverlap) {
+      // 小于不做避让
+      return false;
+    }
+
     // textAllowOverlap 发生改变
     const zoom = this.mapService.getZoom();
     const extent = this.mapService.getBounds();
     const flag = boundsContains(this.extent, extent);
     // 文本不能压盖则进行过滤
     if (
-      (!textAllowOverlap && (Math.abs(this.currentZoom - zoom) > 1 || !flag)) ||
+      Math.abs(this.currentZoom - zoom) > 0.5 ||
+      !flag ||
       textAllowOverlap !== this.preTextStyle.textAllowOverlap
     ) {
-      this.reBuildModel();
+      // TODO this.mapping 数据未变化，避让
+      await this.reBuildModel();
       return true;
     }
+
     return false;
   }
 
   public clearModels() {
     this.texture?.destroy();
     this.dataTexture?.destroy();
-    this.layer.off('remapping', this.buildModels);
+    // TODO this.mapping
+    this.layer.off('remapping', this.mapping);
   }
+
   protected registerBuiltinAttributes() {
     this.styleAttributeService.registerStyleAttribute({
       name: 'rotate',
@@ -243,12 +272,7 @@ export default class TextModel extends BaseModel {
           type: gl.FLOAT,
         },
         size: 1,
-        update: (
-          feature: IEncodeFeature,
-          featureIdx: number,
-          vertex: number[],
-          attributeIdx: number,
-        ) => {
+        update: (feature: IEncodeFeature) => {
           const { rotate = 0 } = feature;
           return Array.isArray(rotate) ? [rotate[0]] : [rotate as number];
         },
@@ -270,7 +294,6 @@ export default class TextModel extends BaseModel {
           feature: IEncodeFeature,
           featureIdx: number,
           vertex: number[],
-          attributeIdx: number,
         ) => {
           return [vertex[5], vertex[6]];
         },
@@ -290,26 +313,19 @@ export default class TextModel extends BaseModel {
           type: gl.FLOAT,
         },
         size: 1,
-        update: (
-          feature: IEncodeFeature,
-          featureIdx: number,
-          vertex: number[],
-          attributeIdx: number,
-        ) => {
+        update: (feature: IEncodeFeature) => {
           const { size = 12 } = feature;
           return Array.isArray(size) ? [size[0]] : [size as number];
         },
       },
     });
 
-    // point layer size;
     this.styleAttributeService.registerStyleAttribute({
       name: 'textUv',
       type: AttributeType.Attribute,
       descriptor: {
         name: 'a_tex',
         buffer: {
-          // give the WebGL driver a hint that this buffer may change
           usage: gl.DYNAMIC_DRAW,
           data: [],
           type: gl.FLOAT,
@@ -319,13 +335,26 @@ export default class TextModel extends BaseModel {
           feature: IEncodeFeature,
           featureIdx: number,
           vertex: number[],
-          attributeIdx: number,
         ) => {
           return [vertex[3], vertex[4]];
         },
       },
     });
   }
+
+  private bindEvent() {
+    if (!this.layer.isTileLayer) {
+      // 重新绑定
+      this.layer.on('remapping', this.mapping);
+    }
+  }
+
+  private mapping = async (): Promise<void> => {
+    this.initGlyph(); //
+    this.updateTexture();
+    await this.reBuildModel();
+  };
+
   private textExtent(): [[number, number], [number, number]] {
     const bounds = this.mapService.getBounds();
     return padBounds(bounds, 0.5);
@@ -334,10 +363,7 @@ export default class TextModel extends BaseModel {
    * 生成文字纹理（生成文字纹理字典）
    */
   private initTextFont() {
-    const {
-      fontWeight = '400',
-      fontFamily = 'sans-serif',
-    } = this.layer.getLayerConfig() as IPointLayerStyleOptions;
+    const { fontWeight, fontFamily } = this.getTextStyle();
     const data = this.layer.getEncodedData();
     const characterSet: string[] = [];
     data.forEach((item: IEncodeFeature) => {
@@ -362,10 +388,7 @@ export default class TextModel extends BaseModel {
    * 生成 iconfont 纹理字典
    */
   private initIconFontTex() {
-    const {
-      fontWeight = '400',
-      fontFamily = 'sans-serif',
-    } = this.layer.getLayerConfig() as IPointLayerStyleOptions;
+    const { fontWeight, fontFamily } = this.getTextStyle();
     const data = this.layer.getEncodedData();
     const characterSet: string[] = [];
     data.forEach((item: IEncodeFeature) => {
@@ -383,21 +406,47 @@ export default class TextModel extends BaseModel {
     });
   }
 
+  private getTextStyle() {
+    const {
+      fontWeight = '400',
+      fontFamily = 'sans-serif',
+      textAllowOverlap = false,
+      padding = [0, 0],
+      textAnchor = 'center',
+      textOffset = [0, 0],
+      opacity = 1,
+      strokeOpacity = 1,
+      strokeWidth = 0,
+      stroke = '#000',
+    } = this.layer.getLayerConfig() as IPointLayerStyleOptions;
+    return {
+      fontWeight,
+      fontFamily,
+      textAllowOverlap,
+      padding,
+      textAnchor,
+      textOffset,
+      opacity,
+      strokeOpacity,
+      strokeWidth,
+      stroke,
+    };
+  }
+
   /**
    * 生成文字布局（对照文字纹理字典提取对应文字的位置很好信息）
    */
   private generateGlyphLayout(iconfont: boolean) {
-    // TODO:更新文字布局
-    const { mapping } = this.fontService;
+    const mapping = this.getFontServiceMapping();
     const {
       spacing = 2,
       textAnchor = 'center',
-      // textOffset,
+      textOffset,
     } = this.layer.getLayerConfig() as IPointLayerStyleOptions;
     const data = this.layer.getEncodedData();
 
     this.glyphInfo = data.map((feature: IEncodeFeature) => {
-      const { shape = '', id, size = 1, textOffset = [0, 0] } = feature;
+      const { shape = '', id, size = 1 } = feature;
 
       const shaping = shapeText(
         shape.toString(),
@@ -407,7 +456,7 @@ export default class TextModel extends BaseModel {
         textAnchor,
         'left',
         spacing,
-        textOffset,
+        textOffset || feature.textOffset || [0, 0],
         iconfont,
       );
       const glyphQuads = getGlyphQuads(shaping, textOffset, false);
@@ -431,17 +480,28 @@ export default class TextModel extends BaseModel {
       return feature;
     });
   }
+
+  private getFontServiceMapping(): IFontMapping {
+    const { fontWeight = '400', fontFamily = 'sans-serif' } =
+      this.layer.getLayerConfig() as IPointLayerStyleOptions;
+    return this.fontService.getMappingByKey(`${fontFamily}_${fontWeight}`);
+  }
+
+  private getFontServiceCanvas(): HTMLCanvasElement {
+    const { fontWeight = '400', fontFamily = 'sans-serif' } =
+      this.layer.getLayerConfig() as IPointLayerStyleOptions;
+    // 更新文字布局
+    return this.fontService.getCanvasByKey(`${fontFamily}_${fontWeight}`);
+  }
+
   /**
    * 文字避让 depend on originCentorid
    */
   private filterGlyphs() {
-    const {
-      padding = [4, 4],
-      textAllowOverlap = false,
-    } = this.layer.getLayerConfig() as IPointLayerStyleOptions;
+    const { padding = [0, 0], textAllowOverlap = false } =
+      this.layer.getLayerConfig() as IPointLayerStyleOptions;
     if (textAllowOverlap) {
       // 如果允许文本覆盖
-      // this.layer.setEncodedData(this.glyphInfo);
       return;
     }
     this.glyphInfoMap = {};
@@ -453,11 +513,13 @@ export default class TextModel extends BaseModel {
       const { shaping, id = 0 } = feature;
       // const centroid = feature.centroid as [number, number];
       // const centroid = feature.originCentroid as [number, number];
-      const centroid = (feature.version === 'GAODE2.x'
-        ? feature.originCentroid
-        : feature.centroid) as [number, number];
+      const centroid = (
+        feature.version === 'GAODE2.x'
+          ? feature.originCentroid
+          : feature.centroid
+      ) as [number, number];
       const size = feature.size as number;
-      const fontScale: number = size / 24;
+      const fontScale: number = size / 16;
       const pixels = this.mapService.lngLatToContainer(centroid);
       const { box } = collisionIndex.placeCollisionBox({
         x1: shaping.left * fontScale - padding[0],
@@ -468,7 +530,6 @@ export default class TextModel extends BaseModel {
         anchorPointY: pixels.y,
       });
       if (box && box.length) {
-        // TODO：featureIndex
         collisionIndex.insertCollisionBox(box, id);
         return true;
       } else {
@@ -488,8 +549,6 @@ export default class TextModel extends BaseModel {
     const { iconfont = false } = this.layer.getLayerConfig();
     // 1.生成文字纹理（或是生成 iconfont）
     iconfont ? this.initIconFontTex() : this.initTextFont();
-    // this.initTextFont();
-
     // 2.生成文字布局
     this.generateGlyphLayout(iconfont);
   }
@@ -498,12 +557,11 @@ export default class TextModel extends BaseModel {
    */
   private updateTexture() {
     const { createTexture2D } = this.rendererService;
-    const { canvas } = this.fontService;
+    const canvas = this.getFontServiceCanvas();
     this.textureHeight = canvas.height;
     if (this.texture) {
       this.texture.destroy();
     }
-
     this.texture = createTexture2D({
       data: canvas,
       mag: gl.LINEAR,
@@ -513,22 +571,16 @@ export default class TextModel extends BaseModel {
     });
   }
 
-  private reBuildModel() {
-    const {
-      mask = false,
-      maskInside = true,
-    } = this.layer.getLayerConfig() as IPointLayerStyleOptions;
+  private async reBuildModel() {
     this.filterGlyphs();
-    this.layer.models = [
-      this.layer.buildLayerModel({
-        moduleName: 'pointText',
-        vertexShader: textVert,
-        fragmentShader: textFrag,
-        triangulation: TextTriangulation.bind(this),
-        depth: { enable: false },
-        blend: this.getBlend(),
-        stencil: getMask(mask, maskInside),
-      }),
-    ];
+    const model = await this.layer.buildLayerModel({
+      moduleName: 'pointText',
+      vertexShader: textVert,
+      fragmentShader: textFrag,
+      triangulation: TextTriangulation.bind(this),
+      depth: { enable: false },
+    });
+    // TODO 渲染流程待修改
+    this.layer.models = [model];
   }
 }

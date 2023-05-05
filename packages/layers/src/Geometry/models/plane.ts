@@ -1,13 +1,13 @@
 import {
   AttributeType,
   gl,
-  IAttrubuteAndElements,
+  IAttributeAndElements,
   IEncodeFeature,
+  IModel,
   IModelUniform,
   ITexture2D,
 } from '@antv/l7-core';
 import { Version } from '@antv/l7-maps';
-import { getMask, isMini } from '@antv/l7-utils';
 // import { mat4, vec3 } from 'gl-matrix';
 import BaseModel from '../../core/BaseModel';
 import { IGeometryLayerStyleOptions } from '../../core/interface';
@@ -134,12 +134,9 @@ export default class PlaneModel extends BaseModel {
     this.texture?.destroy();
   }
 
-  public initModels() {
-    const {
-      mask = false,
-      maskInside = true,
-      mapTexture,
-    } = this.layer.getLayerConfig() as IGeometryLayerStyleOptions;
+  public async initModels(): Promise<IModel[]> {
+    const { mapTexture } =
+      this.layer.getLayerConfig() as IGeometryLayerStyleOptions;
     this.mapTexture = mapTexture;
 
     const { createTexture2D } = this.rendererService;
@@ -149,26 +146,24 @@ export default class PlaneModel extends BaseModel {
     });
 
     this.updateTexture(mapTexture);
-    return [
-      this.layer.buildLayerModel({
-        moduleName: 'geometry_plane',
-        vertexShader: planeVert,
-        fragmentShader: planeFrag,
-        triangulation: this.planeGeometryTriangulation,
-        primitive: gl.TRIANGLES,
-        // primitive: gl.LINES,
-        depth: { enable: true },
-        blend: this.getBlend(),
-        stencil: getMask(mask, maskInside),
-        cull: {
-          enable: true,
-          face: gl.BACK, // gl.FRONT | gl.BACK;
-        },
-      }),
-    ];
+
+    const model = await this.layer.buildLayerModel({
+      moduleName: 'geometryPlane',
+      vertexShader: planeVert,
+      fragmentShader: planeFrag,
+      triangulation: this.planeGeometryTriangulation,
+      primitive: gl.TRIANGLES,
+      depth: { enable: true },
+
+      cull: {
+        enable: true,
+        face: gl.BACK, // gl.FRONT | gl.BACK;
+      },
+    });
+    return [model];
   }
 
-  public buildModels() {
+  public async buildModels(): Promise<IModel[]> {
     return this.initModels();
   }
 
@@ -180,12 +175,8 @@ export default class PlaneModel extends BaseModel {
         width: oldwidth,
         height: oldheight,
       } = this.layer.getLayerConfig() as IGeometryLayerStyleOptions;
-      const {
-        widthSegments,
-        heightSegments,
-        width,
-        height,
-      } = options as IGeometryLayerStyleOptions;
+      const { widthSegments, heightSegments, width, height } =
+        options as IGeometryLayerStyleOptions;
       this.layer.style({
         widthSegments:
           widthSegments !== undefined ? widthSegments : oldwidthSegments,
@@ -217,8 +208,7 @@ export default class PlaneModel extends BaseModel {
           wrapS: gl.CLAMP_TO_EDGE,
           wrapT: gl.CLAMP_TO_EDGE,
         });
-        this.layerService.updateLayerRenderList();
-        this.layerService.renderLayers();
+        this.layerService.reRender();
       };
       img.src = mapTexture;
     } else {
@@ -261,10 +251,10 @@ export default class PlaneModel extends BaseModel {
     const gridY1 = gridY + 1;
 
     const widthStep = imgWidth / gridX;
-    const heihgtStep = imgHeight / gridY;
+    const heightStep = imgHeight / gridY;
 
     for (let iy = 0; iy < gridY1; iy++) {
-      const imgIndexY = Math.floor(iy * heihgtStep);
+      const imgIndexY = Math.floor(iy * heightStep);
       const imgLen = imgIndexY * imgWidth;
 
       for (let ix = 0; ix < gridX1; ix++) {
@@ -291,8 +281,8 @@ export default class PlaneModel extends BaseModel {
         };
       },
     );
-    this.layer.updateModelData(modelData as IAttrubuteAndElements);
-    this.layerService.renderLayers();
+    this.layer.updateModelData(modelData as IAttributeAndElements);
+    this.layerService.throttleRenderLayers();
   }
 
   /**
@@ -350,18 +340,6 @@ export default class PlaneModel extends BaseModel {
     }
   }
 
-  protected getConfigSchema() {
-    return {
-      properties: {
-        opacity: {
-          type: 'number',
-          minimum: 0,
-          maximum: 1,
-        },
-      },
-    };
-  }
-
   protected registerBuiltinAttributes() {
     // point layer size;
     this.styleAttributeService.registerStyleAttribute({
@@ -380,7 +358,6 @@ export default class PlaneModel extends BaseModel {
           feature: IEncodeFeature,
           featureIdx: number,
           vertex: number[],
-          attributeIdx: number,
         ) => {
           return [vertex[3], vertex[4]];
         },

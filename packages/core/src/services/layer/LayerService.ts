@@ -1,16 +1,26 @@
 import { $window, rgb2arr } from '@antv/l7-utils';
+import { EventEmitter } from 'eventemitter3';
 import { inject, injectable } from 'inversify';
+import { throttle } from 'lodash';
 import 'reflect-metadata';
-import { ILayer } from '../..';
 import { TYPES } from '../../types';
 import Clock from '../../utils/clock';
-import { IGlobalConfigService } from '../config/IConfigService';
+import { IDebugService } from '../debug/IDebugService';
 import { IMapService } from '../map/IMapService';
 import { IRendererService } from '../renderer/IRendererService';
-import { ILayerModel, ILayerService } from './ILayerService';
+import {
+  ILayer,
+  ILayerService,
+  LayerServiceEvent,
+  MaskOperation,
+  StencilType,
+} from './ILayerService';
 
 @injectable()
-export default class LayerService implements ILayerService {
+export default class LayerService
+  extends EventEmitter<LayerServiceEvent>
+  implements ILayerService
+{
   // pickedLayerId 参数用于指定当前存在被选中的 layer
   public pickedLayerId: number = -1;
   public clock = new Clock();
@@ -38,32 +48,46 @@ export default class LayerService implements ILayerService {
   @inject(TYPES.IMapService)
   private readonly mapService: IMapService;
 
-  @inject(TYPES.IGlobalConfigService)
-  private readonly configService: IGlobalConfigService;
+  @inject(TYPES.IDebugService)
+  private readonly debugService: IDebugService;
 
+  public reRender = throttle(() => {
+    this.renderLayers();
+  }, 32);
+
+  public throttleRenderLayers = throttle(() => {
+    this.renderLayers();
+  }, 16);
+
+  public needPick(type: string): boolean {
+    return this.layerList.some((layer) => layer.needPick(type));
+  }
   public add(layer: ILayer) {
-    if (this.sceneInited) {
-      layer.init();
-    }
-
     this.layers.push(layer);
-    this.updateLayerRenderList();
+    if (this.sceneInited) {
+      layer.init().then(() => {
+        this.renderLayers();
+      });
+    }
   }
 
   public addMask(mask: ILayer) {
     if (this.sceneInited) {
-      mask.init();
+      mask.init().then(() => {
+        this.renderLayers();
+      });
     }
   }
 
-  public initLayers() {
+  public async initLayers() {
     this.sceneInited = true;
-    this.layers.forEach((layer) => {
-      if (!layer.inited) {
-        layer.init();
+
+    this.layers.forEach(async (layer) => {
+      if (!layer.startInit) {
+        await layer.init();
+        this.updateLayerRenderList();
       }
     });
-    this.updateLayerRenderList();
   }
 
   public getSceneInited() {
@@ -86,18 +110,7 @@ export default class LayerService implements ILayerService {
     return this.layers.find((layer) => layer.name === name);
   }
 
-  public cleanRemove(layer: ILayer, refresh = true) {
-    const layerIndex = this.layers.indexOf(layer);
-    if (layerIndex > -1) {
-      this.layers.splice(layerIndex, 1);
-    }
-    if (refresh) {
-      this.updateLayerRenderList();
-      this.renderLayers();
-    }
-  }
-
-  public remove(layer: ILayer, parentLayer?: ILayer): void {
+  public async remove(layer: ILayer, parentLayer?: ILayer): Promise<void> {
     // Tip: layer.layerChildren 当 layer 存在子图层的情况
     if (parentLayer) {
       const layerIndex = parentLayer.layerChildren.indexOf(layer);
@@ -110,13 +123,14 @@ export default class LayerService implements ILayerService {
         this.layers.splice(layerIndex, 1);
       }
     }
-    this.updateLayerRenderList();
     layer.destroy();
-    this.renderLayers();
+    this.reRender();
+    this.emit('layerChange', this.layers);
   }
 
-  public removeAllLayers() {
+  public async removeAllLayers(): Promise<void> {
     this.destroy();
+    this.reRender();
   }
 
   public setEnableRender(flag: boolean) {
@@ -127,48 +141,100 @@ export default class LayerService implements ILayerService {
     if (this.alreadyInRendering || !this.enableRender) {
       return;
     }
+    this.updateLayerRenderList();
+    const renderUid = this.debugService.generateRenderUid();
+    this.debugService.renderStart(renderUid);
     this.alreadyInRendering = true;
     this.clear();
-
     for (const layer of this.layerList) {
-      layer.hooks.beforeRenderData.call();
-      layer.hooks.beforeRender.call();
-
-      if (layer.masks.length > 0) {
+      const { enableMask } = layer.getLayerConfig();
+      if (layer.masks.filter((m) => m.inited).length > 0 && enableMask) {
         // 清除上一次的模版缓存
-        this.renderService.clear({
-          stencil: 0,
-          depth: 1,
-          framebuffer: null,
-        });
-        layer.masks.map((m: ILayer) => {
-          m.hooks.beforeRenderData.call();
-          m.hooks.beforeRender.call();
-          m.render();
-          m.hooks.afterRender.call();
-        });
+        this.renderMask(layer.masks);
       }
-
       if (layer.getLayerConfig().enableMultiPassRenderer) {
         // multiPassRender 不是同步渲染完成的
         await layer.renderMultiPass();
       } else {
-        layer.render();
+        await layer.render();
       }
-      layer.hooks.afterRender.call();
     }
-
-    // this.layerList.forEach((layer) => {
-    //   layer.hooks.beforeRenderData.call();
-    //   layer.hooks.beforeRender.call();
-    //   layer.render();
-    //   layer.hooks.afterRender.call();
-    // });
+    this.debugService.renderEnd(renderUid);
     this.alreadyInRendering = false;
   }
 
+  public renderMask(masks: ILayer[]) {
+    let maskIndex = 0;
+    this.renderService.clear({
+      stencil: 0,
+      depth: 1,
+      framebuffer: null,
+    });
+    const stencilType =
+      masks.length > 1 ? StencilType.MULTIPLE : StencilType.SINGLE;
+    for (const layer of masks) {
+      // 清除上一次的模版缓存
+      layer.render({ isStencil: true, stencilType, stencilIndex: maskIndex++ });
+    }
+  }
+
+  public async beforeRenderData(layer: ILayer) {
+    const flag = await layer.hooks.beforeRenderData.promise();
+    if (flag) {
+      this.renderLayers();
+    }
+  }
+  public renderTileLayerMask(layer: ILayer) {
+    let maskindex = 0;
+    const { enableMask = true } = layer.getLayerConfig();
+    let maskCount = layer.tileMask ? 1 : 0;
+    const masklayers = layer.masks.filter((m) => m.inited);
+
+    maskCount = maskCount + (enableMask ? masklayers.length : 1);
+    const stencilType =
+      maskCount > 1 ? StencilType.MULTIPLE : StencilType.SINGLE;
+    //  兼容MaskLayer MaskLayer的掩膜不能clear
+    if (layer.tileMask || (masklayers.length && enableMask)) {
+      this.renderService.clear({
+        stencil: 0,
+        depth: 1,
+        framebuffer: null,
+      });
+    }
+
+    if (masklayers.length && enableMask) {
+      for (const mask of masklayers) {
+        mask.render({
+          isStencil: true,
+          stencilType,
+          stencilIndex: maskindex++,
+        });
+      }
+    }
+    // // 瓦片裁剪
+    if (layer.tileMask) {
+      // TODO 示例瓦片掩膜多层支持
+      layer.tileMask.render({
+        isStencil: true,
+        stencilType,
+        stencilIndex: maskindex++,
+        stencilOperation: MaskOperation.OR,
+      });
+    }
+  }
+  // 瓦片图层渲染
+  public async renderTileLayer(layer: ILayer) {
+    this.renderTileLayerMask(layer);
+    if (layer.getLayerConfig().enableMultiPassRenderer) {
+      // multiPassRender 不是同步渲染完成的
+      await layer.renderMultiPass();
+    } else {
+      await layer.render();
+    }
+  }
+
   public updateLayerRenderList() {
-    // TODO: 每次更新都是从 layers 重新构建
+    // Tip: 每次更新都是从 layers 重新构建
     this.layerList = [];
     this.layers
       .filter((layer) => layer.inited)
@@ -188,7 +254,7 @@ export default class LayerService implements ILayerService {
     });
     this.layers = [];
     this.layerList = [];
-    this.renderLayers();
+    this.emit('layerChange', this.layers);
   }
 
   public startAnimate() {

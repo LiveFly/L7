@@ -17,7 +17,7 @@ export default class ReglTexture2D implements ITexture2D {
   private texture: regl.Texture2D;
   private width: number;
   private height: number;
-  private isDistroy: boolean = false;
+  private isDestroy: boolean = false;
 
   constructor(reGl: regl.Regl, options: ITexture2DInitializationOptions) {
     const {
@@ -98,10 +98,14 @@ export default class ReglTexture2D implements ITexture2D {
     this.height = height;
   }
 
+  public getSize(): [number, number] {
+    return [this.width, this.height];
+  }
+
   public destroy() {
-    if (!this.isDistroy) {
+    if (!this.isDestroy) {
       this.texture?.destroy();
     }
-    this.isDistroy = true;
+    this.isDestroy = true;
   }
 }

@@ -1,12 +1,11 @@
 import {
   AttributeType,
   gl,
-  IAttrubuteAndElements,
   IEncodeFeature,
+  IModel,
   IModelUniform,
   ITexture2D,
 } from '@antv/l7-core';
-import { getMask, isMini } from '@antv/l7-utils';
 import BaseModel from '../../core/BaseModel';
 import { IGeometryLayerStyleOptions } from '../../core/interface';
 import planeFrag from '../shaders/billboard_frag.glsl';
@@ -17,9 +16,8 @@ export default class BillBoardModel extends BaseModel {
   private radian: number = 0; // 旋转的弧度
 
   public planeGeometryTriangulation = () => {
-    const {
-      center = [120, 30],
-    } = this.layer.getLayerConfig() as IGeometryLayerStyleOptions;
+    const { center = [120, 30] } =
+      this.layer.getLayerConfig() as IGeometryLayerStyleOptions;
     return {
       size: 4,
       indices: [0, 1, 2, 2, 3, 0],
@@ -46,7 +44,7 @@ export default class BillBoardModel extends BaseModel {
 
     /**
      *               rotateFlag
-     * L7MAP            1
+     * DEFAULT            1
      * MAPBOX           1
      * GAODE2.x         -1
      * GAODE1.x         -1
@@ -81,12 +79,9 @@ export default class BillBoardModel extends BaseModel {
     this.texture?.destroy();
   }
 
-  public initModels() {
-    const {
-      mask = false,
-      maskInside = true,
-      drawCanvas,
-    } = this.layer.getLayerConfig() as IGeometryLayerStyleOptions;
+  public async initModels(): Promise<IModel[]> {
+    const { drawCanvas } =
+      this.layer.getLayerConfig() as IGeometryLayerStyleOptions;
 
     const { createTexture2D } = this.rendererService;
     this.texture = createTexture2D({
@@ -98,31 +93,26 @@ export default class BillBoardModel extends BaseModel {
       this.updateTexture(drawCanvas);
     }
 
-    return [
-      this.layer.buildLayerModel({
-        moduleName: 'geometry_billboard',
-        vertexShader: planeVert,
-        fragmentShader: planeFrag,
-        triangulation: this.planeGeometryTriangulation,
-        primitive: gl.TRIANGLES,
-        depth: { enable: true },
-        blend: this.getBlend(),
-        stencil: getMask(mask, maskInside),
-      }),
-    ];
+    const model = await this.layer.buildLayerModel({
+      moduleName: 'geometryBillboard',
+      vertexShader: planeVert,
+      fragmentShader: planeFrag,
+      triangulation: this.planeGeometryTriangulation,
+      primitive: gl.TRIANGLES,
+      depth: { enable: true },
+    });
+    return [model];
   }
 
-  public buildModels() {
+  public async buildModels(): Promise<IModel[]> {
     return this.initModels();
   }
 
   public updateTexture(drawCanvas: (canvas: HTMLCanvasElement) => void): void {
     const { createTexture2D } = this.rendererService;
 
-    const {
-      canvasWidth = 1,
-      canvasHeight = 1,
-    } = this.layer.getLayerConfig() as IGeometryLayerStyleOptions;
+    const { canvasWidth = 1, canvasHeight = 1 } =
+      this.layer.getLayerConfig() as IGeometryLayerStyleOptions;
     const canvas = document.createElement('canvas');
     canvas.width = canvasWidth;
     canvas.height = canvasHeight;
@@ -136,21 +126,8 @@ export default class BillBoardModel extends BaseModel {
         wrapS: gl.CLAMP_TO_EDGE,
         wrapT: gl.CLAMP_TO_EDGE,
       });
-      this.layerService.updateLayerRenderList();
-      this.layerService.renderLayers();
+      this.layerService.reRender();
     }
-  }
-
-  protected getConfigSchema() {
-    return {
-      properties: {
-        opacity: {
-          type: 'number',
-          minimum: 0,
-          maximum: 1,
-        },
-      },
-    };
   }
 
   protected registerBuiltinAttributes() {
@@ -160,7 +137,6 @@ export default class BillBoardModel extends BaseModel {
       descriptor: {
         name: 'a_Extrude',
         buffer: {
-          // give the WebGL driver a hint that this buffer may change
           usage: gl.DYNAMIC_DRAW,
           data: [],
           type: gl.FLOAT,
@@ -182,14 +158,12 @@ export default class BillBoardModel extends BaseModel {
         },
       },
     });
-    // point layer size;
     this.styleAttributeService.registerStyleAttribute({
       name: 'uv',
       type: AttributeType.Attribute,
       descriptor: {
         name: 'a_Uv',
         buffer: {
-          // give the WebGL driver a hint that this buffer may change
           usage: gl.DYNAMIC_DRAW,
           data: [],
           type: gl.FLOAT,
@@ -199,7 +173,6 @@ export default class BillBoardModel extends BaseModel {
           feature: IEncodeFeature,
           featureIdx: number,
           vertex: number[],
-          attributeIdx: number,
         ) => {
           return [vertex[2], vertex[3]];
         },

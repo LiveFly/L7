@@ -5,19 +5,17 @@ import {
   ILayerConfig,
   IModel,
 } from '@antv/l7-core';
-import { getCullFace, rgb2arr } from '@antv/l7-utils';
+import { calculateCentroid, getCullFace, rgb2arr } from '@antv/l7-utils';
 import { isNumber } from 'lodash';
 import BaseModel from '../../core/BaseModel';
 import { IPointLayerStyleOptions } from '../../core/interface';
 import { PointExtrudeTriangulation } from '../../core/triangulation';
-import { lglt2xyz } from '../../earth/utils';
-import { calculateCentroid } from '../../utils/geo';
 import pointExtrudeFrag from '../shaders/extrude/extrude_frag.glsl';
 import pointExtrudeVert from '../shaders/extrude/extrude_vert.glsl';
 
 export default class ExtrudeModel extends BaseModel {
   private raiseCount: number = 0;
-  private raiserepeat: number = 0;
+  private raiseRepeat: number = 0;
   public getUninforms() {
     const {
       animateOption = {
@@ -89,30 +87,27 @@ export default class ExtrudeModel extends BaseModel {
       useLinearColor = 1;
     }
 
-    if (this.raiseCount < 1 && this.raiserepeat > 0) {
+    if (this.raiseCount < 1 && this.raiseRepeat > 0) {
       if (animateOption.enable) {
-        const { speed = 0.01, repeat = false } = animateOption;
+        const { speed = 0.01 } = animateOption;
         this.raiseCount += speed;
         if (this.raiseCount >= 1) {
-          if (this.raiserepeat > 1) {
+          if (this.raiseRepeat > 1) {
             this.raiseCount = 0;
-            this.raiserepeat--;
+            this.raiseRepeat--;
           } else {
             this.raiseCount = 1;
           }
         }
       }
     }
-
     return {
       // 圆柱体的拾取高亮是否要计算光照
       u_pickLight: Number(pickLight),
       // 圆柱体是否固定高度
       u_heightfixed: Number(heightfixed),
 
-      u_r: animateOption.enable && this.raiserepeat > 0 ? this.raiseCount : 1.0,
-      // TODO: 判断当前的点图层的模型是普通地图模式还是地球模式
-      u_globel: this.mapService.version === 'GLOBEL' ? 1 : 0,
+      u_r: animateOption.enable && this.raiseRepeat > 0 ? this.raiseCount : 1.0,
 
       u_dataTexture: this.dataTexture, // 数据纹理 - 有数据映射的时候纹理中带数据，若没有任何数据映射时纹理是 [1]
       u_cellTypeLayout: this.getCellTypeLayout(),
@@ -132,40 +127,37 @@ export default class ExtrudeModel extends BaseModel {
       u_lightEnable: Number(lightEnable),
     };
   }
-  public initModels(): IModel[] {
+  public async initModels(): Promise<IModel[]> {
     return this.buildModels();
   }
 
-  public buildModels(): IModel[] {
+  public async buildModels(): Promise<IModel[]> {
     // GAODE1.x GAODE2.x MAPBOX
     const {
       depth = true,
       animateOption: { repeat = 1 },
     } = this.layer.getLayerConfig() as ILayerConfig;
-    this.raiserepeat = repeat;
-    return [
-      this.layer.buildLayerModel({
-        moduleName: 'pointExtrude2',
-        vertexShader: pointExtrudeVert,
-        fragmentShader: pointExtrudeFrag,
-        triangulation: PointExtrudeTriangulation,
-        blend: this.getBlend(),
-        cull: {
-          enable: true,
-          face: getCullFace(this.mapService.version),
-        },
-        depth: {
-          enable: depth,
-        },
-      }),
-    ];
+    this.raiseRepeat = repeat;
+
+    const model = await this.layer.buildLayerModel({
+      moduleName: 'pointExtrude',
+      vertexShader: pointExtrudeVert,
+      fragmentShader: pointExtrudeFrag,
+      triangulation: PointExtrudeTriangulation,
+      cull: {
+        enable: true,
+        face: getCullFace(this.mapService.version),
+      },
+      depth: {
+        enable: depth,
+      },
+    });
+    return [model];
   }
   public clearModels() {
     this.dataTexture?.destroy();
   }
   protected registerBuiltinAttributes() {
-    // TODO: 判断当前的点图层的模型是普通地图模式还是地球模式
-    const isGlobel = this.mapService.version === 'GLOBEL';
     // point layer size;
     this.styleAttributeService.registerStyleAttribute({
       name: 'size',
@@ -173,18 +165,12 @@ export default class ExtrudeModel extends BaseModel {
       descriptor: {
         name: 'a_Size',
         buffer: {
-          // give the WebGL driver a hint that this buffer may change
           usage: gl.DYNAMIC_DRAW,
           data: [],
           type: gl.FLOAT,
         },
         size: 3,
-        update: (
-          feature: IEncodeFeature,
-          featureIdx: number,
-          vertex: number[],
-          attributeIdx: number,
-        ) => {
+        update: (feature: IEncodeFeature) => {
           const { size } = feature;
           if (size) {
             let buffersize: number[] = [];
@@ -239,18 +225,9 @@ export default class ExtrudeModel extends BaseModel {
           type: gl.FLOAT,
         },
         size: 3,
-        update: (feature: IEncodeFeature, featureIdx: number) => {
+        update: (feature: IEncodeFeature) => {
           const coordinates = calculateCentroid(feature.coordinates);
-          if (isGlobel) {
-            // TODO: 在地球模式下需要将传入 shader 的经纬度转化成对应的 xyz 坐标
-            return lglt2xyz([coordinates[0], coordinates[1]]) as [
-              number,
-              number,
-              number,
-            ];
-          } else {
-            return [coordinates[0], coordinates[1], 0];
-          }
+          return [coordinates[0], coordinates[1], 0];
         },
       },
     });

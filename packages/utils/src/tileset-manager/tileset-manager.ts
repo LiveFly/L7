@@ -1,4 +1,5 @@
 import EventEmitter from 'eventemitter3';
+import { throttle } from 'lodash';
 import {
   BOUNDS_BUFFER_SCALE,
   DEFAULT_CACHE_SCALE,
@@ -6,13 +7,13 @@ import {
   NOOP,
   UPDATE_TILE_STRATEGIES,
 } from './const';
-import { Tile } from './tile';
+import { SourceTile } from './tile';
 import { TilesetManagerOptions, UpdateTileStrategy } from './types';
 import {
   getLatLonBoundsBuffer,
   isLatLonBoundsContains,
 } from './utils/bound-buffer';
-import { getTileIndices } from './utils/lonlat-tile';
+import { getTileIndices, osmLonLat2TileXY } from './utils/lonlat-tile';
 
 /**
  * 管理瓦片数据
@@ -30,11 +31,11 @@ export class TilesetManager extends EventEmitter {
     return tiles;
   }
   // 当前层级的瓦片
-  public currentTiles: Tile[] = [];
+  public currentTiles: SourceTile[] = [];
   // 配置项
   protected options: TilesetManagerOptions;
   // 缓存的瓦片，key 为 {z}-{x}-{y}
-  private cacheTiles = new Map<string, Tile>();
+  private cacheTiles = new Map<string, SourceTile>();
   // 上一次视野状态
   private lastViewStates?: {
     zoom: number;
@@ -51,7 +52,9 @@ export class TilesetManager extends EventEmitter {
       zoomOffset: 0,
       extent: DEFAULT_EXTENT,
       getTileData: NOOP,
-      updateStrategy: UpdateTileStrategy.Replace,
+      warp: true,
+      // TODO 更新策略
+      updateStrategy: UpdateTileStrategy.Overlap,
     };
     this.updateOptions(options);
   }
@@ -69,11 +72,15 @@ export class TilesetManager extends EventEmitter {
     this.options = { ...this.options, ...options, minZoom, maxZoom };
   }
 
+  public throttleUpdate = throttle((zoom, latLonBounds) => {
+    this.update(zoom, latLonBounds);
+  }, 16);
+
   // 更新
   // 1.瓦片序号发生改变 2.瓦片新增 3.瓦片显隐控制
   public update(zoom: number, latLonBounds: [number, number, number, number]) {
     // 校验层级，向上取整
-    const verifyZoom = Math.ceil(zoom);
+    const verifyZoom = Math.max(0, Math.ceil(zoom));
     if (
       this.lastViewStates &&
       this.lastViewStates.zoom === verifyZoom &&
@@ -98,8 +105,15 @@ export class TilesetManager extends EventEmitter {
     };
 
     let isAddTile = false;
-    const tileIndices = this.getTileIndices(verifyZoom, latLonBoundsBuffer);
-
+    const tileIndices = this.getTileIndices(
+      verifyZoom,
+      latLonBoundsBuffer,
+    ).filter((tile) => {
+      // 处理数据 warp
+      return (
+        this.options.warp || (tile.x >= 0 && tile.x < Math.pow(2, verifyZoom))
+      );
+    });
     this.currentTiles = tileIndices.map(({ x, y, z }) => {
       let tile = this.getTile(x, y, z);
       if (tile) {
@@ -113,7 +127,6 @@ export class TilesetManager extends EventEmitter {
         }
         return tile;
       }
-
       tile = this.createTile(x, y, z);
       isAddTile = true;
       return tile;
@@ -122,10 +135,7 @@ export class TilesetManager extends EventEmitter {
     if (isAddTile) {
       // 更新缓存
       this.resizeCacheTiles();
-      // 重新瓦片树
-      this.rebuildTileTree();
     }
-
     // 更新瓦片显示状态
     this.updateTileVisible();
     // 取消滞留请求中的瓦片
@@ -138,6 +148,7 @@ export class TilesetManager extends EventEmitter {
       if (!this.currentTiles.includes(tile)) {
         this.cacheTiles.delete(tileId);
         this.onTileUnload(tile);
+        return;
       }
       this.onTileUnload(tile);
       tile.loadData({
@@ -150,7 +161,7 @@ export class TilesetManager extends EventEmitter {
 
   // 取消滞留请求中的瓦片
   public pruneRequests() {
-    const abortCandidates: Tile[] = [];
+    const abortCandidates: SourceTile[] = [];
     for (const tile of this.cacheTiles.values()) {
       if (tile.isLoading) {
         if (!tile.isCurrent && !tile.isVisible) {
@@ -160,20 +171,37 @@ export class TilesetManager extends EventEmitter {
     }
 
     while (abortCandidates.length > 0) {
+      // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
       const tile = abortCandidates.shift()!;
       tile.abortLoad();
     }
   }
 
+  public getTileByLngLat(lng: number, lat: number, zoom: number) {
+    const { zoomOffset } = this.options;
+    const z = Math.ceil(zoom) + zoomOffset;
+    const xy = osmLonLat2TileXY(lng, lat, z);
+    const tiles = this.tiles.filter((t) => t.key === `${xy[0]}_${xy[1]}_${z}`);
+    return tiles[0];
+  }
+
   // 摧毁
-  public destroy() {
+  public clear() {
     for (const tile of this.cacheTiles.values()) {
       if (tile.isLoading) {
         tile.abortLoad();
+      } else {
+        this.onTileUnload(tile);
       }
     }
+    this.lastViewStates = undefined;
     this.cacheTiles.clear();
     this.currentTiles = [];
+  }
+
+  // 摧毁
+  public destroy() {
+    this.clear();
     this.removeAllListeners();
   }
 
@@ -241,19 +269,19 @@ export class TilesetManager extends EventEmitter {
   }
 
   // 瓦片加载成功回调
-  private onTileLoad = (tile: Tile) => {
+  private onTileLoad = (tile: SourceTile) => {
     this.emit('tile-loaded', tile);
     this.updateTileVisible();
   };
 
   // 瓦片加载失败回调
-  private onTileError = (error: Error, tile: Tile) => {
+  private onTileError = (error: Error, tile: SourceTile) => {
     this.emit('tile-error', { error, tile });
     this.updateTileVisible();
   };
 
   // 瓦片被删除回调
-  private onTileUnload = (tile: Tile) => {
+  private onTileUnload = (tile: SourceTile) => {
     this.emit('tile-unload', tile);
   };
 
@@ -267,14 +295,19 @@ export class TilesetManager extends EventEmitter {
   private getTile(x: number, y: number, z: number) {
     const tileId = this.getTileId(x, y, z);
     const tile = this.cacheTiles.get(tileId);
-
     return tile;
   }
 
   // 创建瓦片
   private createTile(x: number, y: number, z: number) {
     const tileId = this.getTileId(x, y, z);
-    const tile = new Tile({ x, y, z, tileSize: this.options.tileSize });
+    const tile = new SourceTile({
+      x,
+      y,
+      z,
+      tileSize: this.options.tileSize,
+      warp: this.options.warp,
+    });
 
     this.cacheTiles.set(tileId, tile);
     tile.loadData({
@@ -303,6 +336,8 @@ export class TilesetManager extends EventEmitter {
         }
       }
     }
+    // 缓存更新重新计算瓦片树
+    this.rebuildTileTree();
   }
 
   // 重新计算瓦片树

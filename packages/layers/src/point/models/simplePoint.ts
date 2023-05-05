@@ -1,12 +1,10 @@
 import {
   AttributeType,
-  BlendType,
   gl,
   IEncodeFeature,
   IModel,
   IModelUniform,
 } from '@antv/l7-core';
-import { getMask } from '@antv/l7-utils';
 import { isNumber } from 'lodash';
 import BaseModel from '../../core/BaseModel';
 import { IPointLayerStyleOptions } from '../../core/interface';
@@ -93,28 +91,22 @@ export default class SimplePointModel extends BaseModel {
     };
   }
 
-  public initModels(): IModel[] {
+  public async initModels(): Promise<IModel[]> {
     return this.buildModels();
   }
 
-  public buildModels(): IModel[] {
-    const {
-      mask = false,
-      maskInside = true,
-    } = this.layer.getLayerConfig() as IPointLayerStyleOptions;
+  public async buildModels(): Promise<IModel[]> {
     this.layer.triangulation = PointTriangulation;
-    return [
-      this.layer.buildLayerModel({
-        moduleName: 'simplepoint',
-        vertexShader: simplePointVert,
-        fragmentShader: simplePointFrag,
-        triangulation: PointTriangulation,
-        depth: { enable: false },
-        primitive: gl.POINTS,
-        blend: this.getBlend(),
-        stencil: getMask(mask, maskInside),
-      }),
-    ];
+
+    const model = await this.layer.buildLayerModel({
+      moduleName: 'pointSimple',
+      vertexShader: simplePointVert,
+      fragmentShader: simplePointFrag,
+      triangulation: PointTriangulation,
+      depth: { enable: false },
+      primitive: gl.POINTS,
+    });
+    return [model];
   }
 
   public clearModels() {
@@ -122,35 +114,22 @@ export default class SimplePointModel extends BaseModel {
   }
 
   protected registerBuiltinAttributes() {
-    // point layer size;
     this.styleAttributeService.registerStyleAttribute({
       name: 'size',
       type: AttributeType.Attribute,
       descriptor: {
         name: 'a_Size',
         buffer: {
-          // give the WebGL driver a hint that this buffer may change
           usage: gl.DYNAMIC_DRAW,
           data: [],
           type: gl.FLOAT,
         },
         size: 1,
-        update: (
-          feature: IEncodeFeature,
-          featureIdx: number,
-          vertex: number[],
-          attributeIdx: number,
-        ) => {
+        update: (feature: IEncodeFeature) => {
           const { size = 1 } = feature;
           return Array.isArray(size) ? [size[0]] : [size as number];
         },
       },
     });
-  }
-
-  private defaultStyleOptions(): Partial<IPointLayerStyleOptions> {
-    return {
-      blend: BlendType.additive,
-    };
   }
 }

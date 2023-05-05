@@ -6,7 +6,6 @@ import {
   IModelUniform,
   ITexture2D,
 } from '@antv/l7-core';
-import { getMask } from '@antv/l7-utils';
 import { isNumber } from 'lodash';
 import BaseModel from '../../core/BaseModel';
 import { IPointLayerStyleOptions } from '../../core/interface';
@@ -15,11 +14,12 @@ import pointImageFrag from '../shaders/image_frag.glsl';
 import pointImageVert from '../shaders/image_vert.glsl';
 export default class ImageModel extends BaseModel {
   private texture: ITexture2D;
-
   public getUninforms(): IModelUniform {
     const {
       opacity = 1,
       offsets = [0, 0],
+      raisingHeight = 0,
+      heightfixed = false,
     } = this.layer.getLayerConfig() as IPointLayerStyleOptions;
     if (this.rendererService.getDirty()) {
       this.texture.bind();
@@ -64,6 +64,9 @@ export default class ImageModel extends BaseModel {
             });
     }
     return {
+      u_raisingHeight: Number(raisingHeight),
+      u_heightfixed: Number(heightfixed),
+
       u_dataTexture: this.dataTexture, // 数据纹理 - 有数据映射的时候纹理中带数据，若没有任何数据映射时纹理是 [1]
       u_cellTypeLayout: this.getCellTypeLayout(),
 
@@ -76,10 +79,9 @@ export default class ImageModel extends BaseModel {
     };
   }
 
-  public initModels(): IModel[] {
-    this.registerBuiltinAttributes();
-    this.updateTexture();
+  public async initModels(): Promise<IModel[]> {
     this.iconService.on('imageUpdate', this.updateTexture);
+    this.updateTexture();
     return this.buildModels();
   }
 
@@ -89,23 +91,17 @@ export default class ImageModel extends BaseModel {
     this.iconService.off('imageUpdate', this.updateTexture);
   }
 
-  public buildModels(): IModel[] {
-    const {
-      mask = false,
-      maskInside = true,
-    } = this.layer.getLayerConfig() as IPointLayerStyleOptions;
-    return [
-      this.layer.buildLayerModel({
-        moduleName: 'pointImage',
-        vertexShader: pointImageVert,
-        fragmentShader: pointImageFrag,
-        triangulation: PointImageTriangulation,
-        primitive: gl.POINTS,
-        depth: { enable: false },
-        blend: this.getBlend(),
-        stencil: getMask(mask, maskInside),
-      }),
-    ];
+  public async buildModels(): Promise<IModel[]> {
+    const model = await this.layer.buildLayerModel({
+      moduleName: 'pointImage',
+      vertexShader: pointImageVert,
+      fragmentShader: pointImageFrag,
+      triangulation: PointImageTriangulation,
+      depth: { enable: false },
+      primitive: gl.POINTS,
+    });
+
+    return [model];
   }
   protected registerBuiltinAttributes() {
     // point layer size;
@@ -121,12 +117,7 @@ export default class ImageModel extends BaseModel {
           type: gl.FLOAT,
         },
         size: 1,
-        update: (
-          feature: IEncodeFeature,
-          featureIdx: number,
-          vertex: number[],
-          attributeIdx: number,
-        ) => {
+        update: (feature: IEncodeFeature) => {
           const { size = 5 } = feature;
           return Array.isArray(size) ? [size[0]] : [size as number];
         },
@@ -146,15 +137,10 @@ export default class ImageModel extends BaseModel {
           type: gl.FLOAT,
         },
         size: 2,
-        update: (
-          feature: IEncodeFeature,
-          featureIdx: number,
-          vertex: number[],
-          attributeIdx: number,
-        ) => {
+        update: (feature: IEncodeFeature) => {
           const iconMap = this.iconService.getIconMap();
           const { shape } = feature;
-          const { x, y } = iconMap[shape as string] || { x: 0, y: 0 };
+          const { x, y } = iconMap[shape as string] || { x: -64, y: -64 }; // 非画布区域，默认的图标改为透明
           return [x, y];
         },
       },
@@ -170,8 +156,13 @@ export default class ImageModel extends BaseModel {
         min: 'linear mipmap nearest',
         mipmap: true,
       });
-      // TODO: 更新完纹理后在更新的图层的时候需要更新所有的图层
-      this.layer.renderLayers();
+      // 更新完纹理后在更新的图层的时候需要更新所有的图层
+      // this.layer.layerModelNeedUpdate = true;
+      setTimeout(() => {
+        // 延迟渲染
+        this.layerService.throttleRenderLayers();
+      });
+
       return;
     }
     this.texture = createTexture2D({

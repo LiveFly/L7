@@ -1,17 +1,11 @@
 import { $window } from '@antv/l7-utils';
 import { EventEmitter } from 'eventemitter3';
-import { inject, injectable } from 'inversify';
+import { injectable } from 'inversify';
 import 'reflect-metadata';
 import { buildIconMaping } from '../../utils/font_util';
 import { ITexture2D } from '../renderer/ITexture2D';
 import { ISceneService } from '../scene/ISceneService';
-import {
-  IIcon,
-  IICONMap,
-  IIconService,
-  IIconValue,
-  IImage,
-} from './IIconService';
+import { IIcon, IICONMap, IIconService, IImage } from './IIconService';
 const BUFFER = 3;
 const MAX_CANVAS_WIDTH = 1024;
 const imageSize = 64;
@@ -37,29 +31,28 @@ export default class IconService extends EventEmitter implements IIconService {
     this.ctx = this.canvas.getContext('2d') as CanvasRenderingContext2D;
   }
 
-  public addImage(id: string, image: IImage) {
+  public async addImage(id: string, image: IImage) {
     let imagedata = new Image();
     this.loadingImageCount++;
     if (this.hasImage(id)) {
-      throw new Error('Image Id already exists');
-    }
-    this.iconData.push({
-      id,
-      size: imageSize,
-    });
-    this.updateIconMap();
-    this.loadImage(image).then((img) => {
-      imagedata = img as HTMLImageElement;
-      const iconImage = this.iconData.find((icon: IIcon) => {
-        return icon.id === id;
+      console.warn('Image Id already exists');
+    } else {
+      this.iconData.push({
+        id,
+        size: imageSize,
       });
-      if (iconImage) {
-        iconImage.image = imagedata;
-        iconImage.width = imagedata.width;
-        iconImage.height = imagedata.height;
-      }
-      this.update();
+    }
+    this.updateIconMap(); // 先存储 ID，
+    imagedata = (await this.loadImage(image)) as HTMLImageElement;
+    const iconImage = this.iconData.find((icon: IIcon) => {
+      return icon.id === id;
     });
+    if (iconImage) {
+      iconImage.image = imagedata;
+      iconImage.width = imagedata.width;
+      iconImage.height = imagedata.height;
+    }
+    this.update();
   }
 
   /**

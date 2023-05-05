@@ -26,6 +26,35 @@ export interface IBlendOptions {
   // gl.blendColor
   color: [number, number, number, number];
 }
+export interface IStencilOptions {
+  // gl.enable(gl.STENCIL_TEST)
+  enable: boolean;
+  // gl.stencilMask
+  mask: number;
+  func: {
+    cmp:
+      | gl.NEVER
+      | gl.ALWAYS
+      | gl.LESS
+      | gl.LEQUAL
+      | gl.GREATER
+      | gl.GEQUAL
+      | gl.EQUAL
+      | gl.NOTEQUAL;
+    ref: number;
+    mask: number;
+  };
+  opFront: {
+    fail: stencilOp;
+    zfail: stencilOp;
+    zpass: stencilOp;
+  };
+  opBack: {
+    fail: stencilOp;
+    zfail: stencilOp;
+    zpass: stencilOp;
+  };
+}
 type stencilOp =
   | gl.ZERO
   | gl.KEEP
@@ -35,7 +64,7 @@ type stencilOp =
   | gl.DECR
   | gl.INCR_WRAP
   | gl.DECR_WRAP;
-
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
 type BlendingFunctionCombined = Partial<{
   src:
     | gl.ZERO
@@ -110,6 +139,10 @@ type BlendingFunctionSeparate = Partial<{
 
 export interface IModelInitializationOptions {
   /**
+   * 该 model 是否支持拾取
+   */
+  pick?: boolean;
+  /**
    * Shader 字符串，假设此时已经经过 ShaderLib 处理
    */
   vs: string;
@@ -181,35 +214,7 @@ export interface IModelInitializationOptions {
   /**
    * stencil
    */
-  stencil?: Partial<{
-    // gl.enable(gl.STENCIL_TEST)
-    enable: boolean;
-    // gl.stencilMask
-    mask: number;
-    func: {
-      cmp:
-        | gl.NEVER
-        | gl.ALWAYS
-        | gl.LESS
-        | gl.LEQUAL
-        | gl.GREATER
-        | gl.GEQUAL
-        | gl.EQUAL
-        | gl.NOTEQUAL;
-      ref: number;
-      mask: number;
-    };
-    opFront: {
-      fail: stencilOp;
-      zfail: stencilOp;
-      zpass: stencilOp;
-    };
-    opBack: {
-      fail: stencilOp;
-      zfail: stencilOp;
-      zpass: stencilOp;
-    };
-  }>;
+  stencil?: Partial<IStencilOptions>;
 
   /**
    * cull
@@ -232,7 +237,9 @@ export interface IModelDrawOptions {
   };
   elements?: IElements;
 
-  blend?: IBlendOptions;
+  blend?: Partial<IBlendOptions>;
+
+  stencil?: Partial<IStencilOptions>;
 }
 
 /**

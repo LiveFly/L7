@@ -2,17 +2,15 @@ import {
   AttributeType,
   gl,
   IEncodeFeature,
+  ILayerConfig,
   IModel,
   Triangulation,
 } from '@antv/l7-core';
-import { getMask } from '@antv/l7-utils';
+import { polygonFillTriangulation } from '@antv/l7-utils';
 import { isNumber } from 'lodash';
 import BaseModel from '../../core/BaseModel';
 import { IPolygonLayerStyleOptions } from '../../core/interface';
-import {
-  polygonTriangulation,
-  polygonTriangulationWithCenter,
-} from '../../core/triangulation';
+import { polygonTriangulationWithCenter } from '../../core/triangulation';
 import polygon_frag from '../shaders/polygon_frag.glsl';
 import polygon_linear_frag from '../shaders/polygon_linear_frag.glsl';
 import polygon_linear_vert from '../shaders/polygon_linear_vert.glsl';
@@ -27,6 +25,7 @@ export default class FillModel extends BaseModel {
         dir: 'in',
       },
     } = this.layer.getLayerConfig() as IPolygonLayerStyleOptions;
+
     if (this.dataTextureTest && this.dataTextureNeedUpdate({ opacity })) {
       this.judgeStyleAttributes({ opacity });
       const encodeData = this.layer.getEncodedData();
@@ -36,7 +35,6 @@ export default class FillModel extends BaseModel {
         this.cellProperties,
       );
       this.rowCount = height; // 当前数据纹理有多少行
-
       this.dataTexture =
         this.cellLength > 0 && data.length > 0
           ? this.createTexture2D({
@@ -56,6 +54,7 @@ export default class FillModel extends BaseModel {
               height: 1,
             });
     }
+
     return {
       u_dataTexture: this.dataTexture, // 数据纹理 - 有数据映射的时候纹理中带数据，若没有任何数据映射时纹理是 [1]
       u_cellTypeLayout: this.getCellTypeLayout(),
@@ -69,28 +68,32 @@ export default class FillModel extends BaseModel {
     };
   }
 
-  public initModels(): IModel[] {
+  public async initModels(): Promise<IModel[]> {
     return this.buildModels();
   }
 
-  public buildModels(): IModel[] {
+  public async buildModels(): Promise<IModel[]> {
     const { frag, vert, triangulation, type } = this.getModelParams();
-    const {
-      mask = false,
-      maskInside = true,
-    } = this.layer.getLayerConfig() as IPolygonLayerStyleOptions;
+    const { workerEnabled = false, enablePicking } =
+      this.layer.getLayerConfig() as Partial<
+        ILayerConfig & IPolygonLayerStyleOptions
+      >;
     this.layer.triangulation = triangulation;
-    return [
-      this.layer.buildLayerModel({
-        moduleName: type,
-        vertexShader: vert,
-        fragmentShader: frag,
-        triangulation,
-        blend: this.getBlend(),
-        depth: { enable: false },
-        stencil: getMask(mask, maskInside),
-      }),
-    ];
+    const model = await this.layer.buildLayerModel({
+      moduleName: type,
+      vertexShader: vert,
+      fragmentShader: frag,
+      triangulation,
+      primitive: gl.TRIANGLES,
+      depth: { enable: false },
+
+      workerEnabled,
+      workerOptions: {
+        modelType: type,
+        enablePicking,
+      },
+    });
+    return [model];
   }
 
   public clearModels() {
@@ -121,10 +124,7 @@ export default class FillModel extends BaseModel {
             feature: IEncodeFeature,
             featureIdx: number,
             vertex: number[],
-            attributeIdx: number,
-            normal: number[],
           ) => {
-            // center[0] center[1] radius
             return [vertex[3], vertex[4], vertex[5]];
           },
         },
@@ -147,15 +147,15 @@ export default class FillModel extends BaseModel {
       return {
         frag: polygon_linear_frag,
         vert: polygon_linear_vert,
-        type: 'polygon_linear',
+        type: 'polygonLinear',
         triangulation: polygonTriangulationWithCenter,
       };
     } else {
       return {
         frag: polygon_frag,
         vert: polygon_vert,
-        type: 'polygon_fill',
-        triangulation: polygonTriangulation,
+        type: 'polygonFill',
+        triangulation: polygonFillTriangulation,
       };
     }
   }

@@ -4,6 +4,7 @@ import {
   IEncodeFeature,
   IModel,
   IModelUniform,
+  IRenderOptions,
   ITexture2D,
   Point,
 } from '@antv/l7-core';
@@ -28,7 +29,6 @@ const defaultRampColors = {
 
 export default class WindModel extends BaseModel {
   protected texture: ITexture2D;
-
   private colorModel: IModel;
   private wind: IWind;
   private imageCoords: [Point, Point];
@@ -37,45 +37,47 @@ export default class WindModel extends BaseModel {
   // source: 'http://nomads.ncep.noaa.gov',
 
   private frequency = new FrequencyController(7.2);
+  private cacheZoom: number;
 
-  public render() {
-    // TODO: 控制风场的平均更新频率
+  public render(options: Partial<IRenderOptions>) {
+    this.drawColorMode(options);
+    // Tip: 控制风场的平均更新频率
     this.frequency.run(() => {
       this.drawWind();
     });
-    this.drawColorMode();
   }
 
   public getUninforms(): IModelUniform {
     throw new Error('Method not implemented.');
   }
 
-  public initModels() {
+  public async initModels(): Promise<IModel[]> {
+    const {
+      uMin = -21.32,
+      uMax = 26.8,
+      vMin = -21.57,
+      vMax = 21.42,
+      fadeOpacity = 0.996,
+      speedFactor = 0.25,
+      dropRate = 0.003,
+      dropRateBump = 0.01,
+      rampColors = defaultRampColors,
+      sizeScale = 0.5,
+      // mask
+    } = this.layer.getLayerConfig() as IWindLayerStyleOptions;
     const { createTexture2D } = this.rendererService;
-
     const source = this.layer.getSource();
     this.texture = createTexture2D({
       height: 0,
       width: 0,
     });
+    this.cacheZoom = Math.floor(this.mapService.getZoom());
 
     const glContext = this.rendererService.getGLContext();
-    this.imageCoords = source.data.dataArray[0].coordinates as [Point, Point];
+    this.imageCoords = source.data?.dataArray[0].coordinates as [Point, Point];
 
-    source.data.images.then((imageData: HTMLImageElement[]) => {
-      const {
-        uMin = -21.32,
-        uMax = 26.8,
-        vMin = -21.57,
-        vMax = 21.42,
-        fadeOpacity = 0.996,
-        speedFactor = 0.25,
-        dropRate = 0.003,
-        dropRateBump = 0.01,
-        rampColors = defaultRampColors,
-        sizeScale = 0.5,
-      } = this.layer.getLayerConfig() as IWindLayerStyleOptions;
-      this.sizeScale = sizeScale;
+    source.data?.images?.then((imageData: HTMLImageElement[]) => {
+      this.sizeScale = sizeScale * this.getZoomScale();
 
       const { imageWidth, imageHeight } = this.getWindSize();
 
@@ -100,58 +102,50 @@ export default class WindModel extends BaseModel {
         vMax,
         image: imageData[0],
       });
+      this.texture?.destroy();
 
       this.texture = createTexture2D({
-        data: imageData[0],
-        width: imageData[0].width,
-        height: imageData[0].height,
+        width: imageWidth,
+        height: imageHeight,
       });
 
-      this.layerService.updateLayerRenderList();
-      this.layerService.renderLayers();
+      this.layerService.reRender();
     });
 
-    this.colorModel = this.layer.buildLayerModel({
-      moduleName: 'WindLayer',
+    const model = await this.layer.buildLayerModel({
+      moduleName: 'wind',
       vertexShader: WindVert,
       fragmentShader: WindFrag,
       triangulation: RasterImageTriangulation,
       primitive: gl.TRIANGLES,
       depth: { enable: false },
-      blend: this.getBlend(),
     });
-
-    return [this.colorModel];
+    this.colorModel = model;
+    return [model];
   }
 
   public getWindSize() {
     const p1 = this.mapService.lngLatToPixel(this.imageCoords[0]);
     const p2 = this.mapService.lngLatToPixel(this.imageCoords[1]);
 
-    const imageWidth = Math.floor((p2.x - p1.x) * this.sizeScale);
-    const imageHeight = Math.floor((p1.y - p2.y) * this.sizeScale);
+    const imageWidth = Math.min(
+      Math.floor((p2.x - p1.x) * this.sizeScale),
+      2048,
+    );
+    const imageHeight = Math.min(
+      Math.floor((p1.y - p2.y) * this.sizeScale),
+      2048,
+    );
     return { imageWidth, imageHeight };
   }
 
-  public buildModels() {
+  public async buildModels(): Promise<IModel[]> {
     return this.initModels();
   }
 
   public clearModels(): void {
     this.texture?.destroy();
     this.wind?.destroy();
-  }
-
-  protected getConfigSchema() {
-    return {
-      properties: {
-        opacity: {
-          type: 'number',
-          minimum: 0,
-          maximum: 1,
-        },
-      },
-    };
   }
 
   protected registerBuiltinAttributes() {
@@ -172,12 +166,15 @@ export default class WindModel extends BaseModel {
           feature: IEncodeFeature,
           featureIdx: number,
           vertex: number[],
-          attributeIdx: number,
         ) => {
           return [vertex[3], vertex[4]];
         },
       },
     });
+  }
+
+  private getZoomScale() {
+    return Math.min(((this.cacheZoom + 4) / 30) * 2, 2);
   }
 
   private drawWind() {
@@ -195,15 +192,23 @@ export default class WindModel extends BaseModel {
         rampColors = defaultRampColors,
         sizeScale = 0.5,
       } = this.layer.getLayerConfig() as IWindLayerStyleOptions;
-      if (typeof sizeScale === 'number' && sizeScale !== this.sizeScale) {
+      let newNumParticles = numParticles;
+      const currentZoom = Math.floor(this.mapService.getZoom());
+      if (
+        (typeof sizeScale === 'number' && sizeScale !== this.sizeScale) ||
+        currentZoom !== this.cacheZoom
+      ) {
+        const zoomScale = this.getZoomScale();
         this.sizeScale = sizeScale;
+        newNumParticles *= zoomScale;
         const { imageWidth, imageHeight } = this.getWindSize();
         this.wind.reSize(imageWidth, imageHeight);
+        this.cacheZoom = currentZoom;
       }
 
       this.wind.updateWindDir(uMin, uMax, vMin, vMax);
 
-      this.wind.updateParticelNum(numParticles);
+      this.wind.updateParticelNum(newNumParticles);
 
       this.wind.updateColorRampTexture(rampColors);
 
@@ -213,7 +218,7 @@ export default class WindModel extends BaseModel {
       this.wind.dropRateBump = dropRateBump;
 
       const { d, w, h } = this.wind.draw();
-      // TODO: 恢复 L7 渲染流程中 gl 状态
+      // 恢复 L7 渲染流程中 gl 状态
       this.rendererService.setBaseState();
       this.texture.update({
         data: d,
@@ -223,13 +228,21 @@ export default class WindModel extends BaseModel {
     }
   }
 
-  private drawColorMode() {
+  private drawColorMode(options: Partial<IRenderOptions> = {}) {
     const { opacity } = this.layer.getLayerConfig() as IWindLayerStyleOptions;
-    this.colorModel.draw({
+
+    this.layerService.beforeRenderData(this.layer);
+    this.layer.hooks.beforeRender.call();
+    this.layerService.renderMask(this.layer.masks);
+    this.colorModel?.draw({
       uniforms: {
         u_opacity: opacity || 1.0,
         u_texture: this.texture,
       },
+      blend: this.getBlend(),
+      stencil: this.getStencil(options),
     });
+
+    this.layer.hooks.afterRender.call();
   }
 }

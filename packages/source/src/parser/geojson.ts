@@ -8,8 +8,9 @@ import {
   Properties,
 } from '@turf/helpers';
 import { getCoords } from '@turf/invariant';
-import * as turfMeta from '@turf/meta';
+import { flattenEach } from '@turf/meta';
 import { IFeatureKey, IParseDataItem, IParserData } from '../interface';
+
 interface IParserCFG {
   idField?: string;
   featureId?: string;
@@ -35,16 +36,13 @@ function getFeatureID(feature: Feature<Geometries, Properties>, key?: string) {
   if (key === undefined) {
     return null;
   }
-  if (key === 'id' && feature.id) {
-    // 标准 mapbox vector feature
-    return feature.id;
-  }
+
   // @ts-ignore
-  if (feature[key]) {
-    // 单独指定要素
+  if (typeof feature.properties[key] * 1 === 'number') {
     // @ts-ignore
-    return feature[key];
+    return feature.properties[key] * 1;
   }
+
   if (feature.properties && feature.properties[key]) {
     // 根据 properties 要素的属性进行编码
     return djb2hash(feature.properties[key] + '') % 1000019;
@@ -64,6 +62,7 @@ export default function geoJSON(
       dataArray: [],
     };
   }
+
   data.features = data.features.filter((item: Feature) => {
     const geometry: Geometry | null = item.geometry as Geometry;
     return (
@@ -74,21 +73,25 @@ export default function geoJSON(
       geometry.coordinates.length > 0
     );
   });
+
   rewind(data, true); // 设置地理多边形方向 If clockwise is true, the outer ring is clockwise, otherwise it is counterclockwise.
+
   if (data.features.length === 0) {
     return {
       dataArray: [],
       featureKeys,
     };
   }
-  // multi polygon 拆分
-  turfMeta.flattenEach(
+
+  // multi feature 情况拆分
+  flattenEach(
     data,
     (currentFeature: Feature<Geometries, Properties>, featureIndex: number) => {
       let featureId = getFeatureID(currentFeature, cfg?.featureId);
       if (featureId === null) {
         featureId = featureIndex;
       }
+
       const sortedID = featureId;
 
       const coord = getCoords(currentFeature);
@@ -100,6 +103,7 @@ export default function geoJSON(
       resultData.push(dataItem);
     },
   );
+
   return {
     dataArray: resultData,
     featureKeys,

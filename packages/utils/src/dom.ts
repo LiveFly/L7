@@ -1,5 +1,15 @@
-import { $window, isMini } from './mini-adapter';
-type ELType = HTMLElement | SVGElement;
+import { pull } from 'lodash';
+import { $window } from './mini-adapter';
+
+export type ELType = HTMLElement | SVGElement;
+
+export type ElementType =
+  | HTMLElement
+  | HTMLElement[]
+  | DocumentFragment
+  | Text
+  | string;
+
 export function getContainer(domId: string | HTMLDivElement) {
   let $dom = domId as HTMLDivElement;
   if (typeof domId === 'string') {
@@ -37,7 +47,9 @@ export function create(
   container?: HTMLElement,
 ) {
   const el = $window.document.createElement(tagName);
-  el.className = className || '';
+  if (className) {
+    el.className = className || '';
+  }
 
   if (container) {
     container.appendChild(el);
@@ -46,7 +58,7 @@ export function create(
 }
 // @function remove(el: HTMLElement)
 // Removes `el` from its parent element
-export function remove(el: ELType) {
+export function remove(el: ELType | DocumentFragment) {
   const parent = el.parentNode;
   if (parent) {
     parent.removeChild(el);
@@ -71,7 +83,10 @@ export function addClass(el: ELType, name: string) {
 // Removes `name` from the element's class attribute.
 export function removeClass(el: ELType, name: string) {
   if (el.classList !== undefined) {
-    el.classList.remove(name);
+    const classes = splitWords(name);
+    classes.forEach((className) => {
+      el.classList.remove(className);
+    });
   } else {
     setClass(
       el,
@@ -162,10 +177,78 @@ export function getViewPortScale() {
   }
   const contentItems = (meta as any).content?.split(',');
   const scale = contentItems.find((item: string) => {
-    const [key, value] = item.split('=');
+    const [key] = item.split('=');
     return key === 'initial-scale';
   });
   return scale ? scale.split('=')[1] * 1 : 1;
 }
 
 export const DPR = getViewPortScale() < 1 ? 1 : $window.devicePixelRatio;
+
+export function addStyle(el: ELType, style: string) {
+  el.setAttribute('style', `${el.style.cssText}${style}`);
+}
+
+export function getStyleList(style: string): string[] {
+  return style
+    .split(';')
+    .map((item) => item.trim())
+    .filter((item) => item);
+}
+
+export function removeStyle(el: ELType, style: string) {
+  const oldStyleList = getStyleList(el.getAttribute('style') ?? '');
+  const targetStyleList = getStyleList(style);
+  const newStyleList = pull(oldStyleList, ...targetStyleList);
+  el.setAttribute('style', newStyleList.join(';'));
+}
+
+export function css2Style(obj: any) {
+  return Object.entries(obj)
+    .map(([key, value]) => `${key}: ${value}`)
+    .join(';');
+}
+
+export function getDiffRect(dom1Rect: any, dom2Rect: any) {
+  return {
+    left: dom1Rect.left - dom2Rect.left,
+    top: dom1Rect.top - dom2Rect.top,
+    right: dom2Rect.left + dom2Rect.width - dom1Rect.left - dom1Rect.width,
+    bottom: dom2Rect.top + dom2Rect.height - dom1Rect.top - dom1Rect.height,
+  };
+}
+
+export function setChecked(el: ELType, value: boolean) {
+  // @ts-ignore
+  el.checked = value;
+  if (value) {
+    el.setAttribute('checked', 'true');
+  } else {
+    el.removeAttribute('checked');
+  }
+}
+
+export function clearChildren(el: ELType) {
+  el.innerHTML = '';
+}
+
+export function setUnDraggable(el: ELType) {
+  el.setAttribute('draggable', 'false');
+}
+
+export function appendElementType(
+  container: HTMLElement | DocumentFragment,
+  children: ElementType,
+) {
+  if (typeof children === 'string') {
+    const div = document.createElement('div');
+    div.innerHTML = children;
+    while (div.firstChild) {
+      container.append(div.firstChild);
+    }
+  } else if (Array.isArray(children)) {
+    container.append(...children);
+  } else {
+    container.append(children);
+  }
+}

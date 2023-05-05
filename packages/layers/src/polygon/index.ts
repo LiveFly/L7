@@ -5,35 +5,25 @@ import PolygonModels, { PolygonModelType } from './models/';
 
 export default class PolygonLayer extends BaseLayer<IPolygonLayerStyleOptions> {
   public type: string = 'PolygonLayer';
-  public buildModels() {
+  public defaultSourceConfig: {
+    data: [];
+    options: {
+      parser: {
+        type: 'geojson';
+      };
+    };
+  };
+  public async buildModels() {
     const shape = this.getModelType();
     this.layerModel = new PolygonModels[shape](this);
-    this.models = this.layerModel.initModels();
-  }
-  public rebuildModels() {
-    this.models = this.layerModel.buildModels();
-  }
-  protected getConfigSchema() {
-    return {
-      properties: {
-        opacity: {
-          type: 'number',
-          minimum: 0,
-          maximum: 1,
-        },
-      },
-    };
+    await this.initLayerModels();
   }
 
-  protected getModelType(): PolygonModelType {
-    if (this.layerSource.parser.type === 'mvt') {
-      return 'vectorpolygon';
-    }
-    const shapeAttribute = this.styleAttributeService.getLayerStyleAttribute(
-      'shape',
-    );
+  public getModelType(): PolygonModelType {
+    const shapeAttribute =
+      this.styleAttributeService.getLayerStyleAttribute('shape');
     const shape = shapeAttribute?.scale?.field as PolygonModelType;
-    if (shape === 'fill') {
+    if (shape === 'fill' || !shape) {
       return 'fill';
     } else if (shape === 'extrude') {
       return 'extrude';
@@ -43,8 +33,6 @@ export default class PolygonLayer extends BaseLayer<IPolygonLayerStyleOptions> {
       return 'ocean';
     } else if (shape === 'line') {
       return 'line';
-    } else if (shape === 'tile') {
-      return 'tile';
     } else {
       return this.getPointModelType();
     }

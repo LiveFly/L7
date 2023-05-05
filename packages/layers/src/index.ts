@@ -2,14 +2,15 @@ import { container, ILayerPlugin, TYPES } from '@antv/l7-core';
 import CanvasLayer from './canvas';
 import CityBuildingLayer from './citybuliding/building';
 import BaseLayer from './core/BaseLayer';
+import BaseModel from './core/BaseModel';
 import GeometryLayer from './Geometry'; // 逐步替换为 Geometry
-import './glsl.d';
 import HeatmapLayer from './heatmap';
 import ImageLayer from './image';
 import LineLayer from './line/index';
 import PointLayer from './point';
 import PolygonLayer from './polygon';
 import RasterLayer from './raster';
+import TileDebugLayer from './tile/tileFactory/layers/TileDebugLayer';
 
 import EarthLayer from './earth';
 
@@ -21,6 +22,7 @@ import DataMappingPlugin from './plugins/DataMappingPlugin';
 import DataSourcePlugin from './plugins/DataSourcePlugin';
 import FeatureScalePlugin from './plugins/FeatureScalePlugin';
 import LayerAnimateStylePlugin from './plugins/LayerAnimateStylePlugin';
+import LayerMaskPlugin from './plugins/LayerMaskPlugin';
 import LayerModelPlugin from './plugins/LayerModelPlugin';
 import LayerStylePlugin from './plugins/LayerStylePlugin';
 import LightingPlugin from './plugins/LightingPlugin';
@@ -74,6 +76,14 @@ container
 container
   .bind<ILayerPlugin>(TYPES.ILayerPlugin)
   .to(LayerStylePlugin)
+  .inRequestScope();
+
+/**
+ * 初始化地图 Mask
+ */
+container
+  .bind<ILayerPlugin>(TYPES.ILayerPlugin)
+  .to(LayerMaskPlugin)
   .inRequestScope();
 
 /**
@@ -136,8 +146,10 @@ container
   .to(LayerModelPlugin)
   .inRequestScope();
 
+export * from './core/interface';
 export {
   BaseLayer,
+  BaseModel,
   PointLayer,
   PolygonLayer,
   LineLayer,
@@ -150,6 +162,5 @@ export {
   EarthLayer,
   WindLayer,
   MaskLayer,
+  TileDebugLayer,
 };
-
-export * from './core/interface';

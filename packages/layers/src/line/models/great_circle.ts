@@ -8,10 +8,10 @@ import {
   IModelUniform,
   ITexture2D,
 } from '@antv/l7-core';
-import { getMask, rgb2arr } from '@antv/l7-utils';
+import { rgb2arr } from '@antv/l7-utils';
 import { isNumber } from 'lodash';
 import BaseModel from '../../core/BaseModel';
-import { ILineLayerStyleOptions, lineStyleType } from '../../core/interface';
+import { ILineLayerStyleOptions } from '../../core/interface';
 import { LineArcTriangulation } from '../../core/triangulation';
 import line_arc_frag from '../shaders/line_arc_great_circle_frag.glsl';
 import line_arc2d_vert from '../shaders/line_arc_great_circle_vert.glsl';
@@ -107,12 +107,12 @@ export default class GreatCircleModel extends BaseModel {
   public getAnimateUniforms(): IModelUniform {
     const { animateOption } = this.layer.getLayerConfig() as ILayerConfig;
     return {
-      u_aimate: this.animateOption2Array(animateOption as IAnimateOption),
+      u_animate: this.animateOption2Array(animateOption as IAnimateOption),
       u_time: this.layer.getLayerAnimateTime(),
     };
   }
 
-  public initModels(): IModel[] {
+  public async initModels(): Promise<IModel[]> {
     this.updateTexture();
     this.iconService.on('imageUpdate', this.updateTexture);
 
@@ -125,22 +125,15 @@ export default class GreatCircleModel extends BaseModel {
     this.iconService.off('imageUpdate', this.updateTexture);
   }
 
-  public buildModels(): IModel[] {
-    const {
-      mask = false,
-      maskInside = true,
-    } = this.layer.getLayerConfig() as ILineLayerStyleOptions;
-    return [
-      this.layer.buildLayerModel({
-        moduleName: 'greatcircleline',
-        vertexShader: line_arc2d_vert,
-        fragmentShader: line_arc_frag,
-        triangulation: LineArcTriangulation,
-        depth: { enable: false },
-        blend: this.getBlend(),
-        stencil: getMask(mask, maskInside),
-      }),
-    ];
+  public async buildModels(): Promise<IModel[]> {
+    const model = await this.layer.buildLayerModel({
+      moduleName: 'lineGreatCircle',
+      vertexShader: line_arc2d_vert,
+      fragmentShader: line_arc_frag,
+      triangulation: LineArcTriangulation,
+      depth: { enable: false },
+    });
+    return [model];
   }
   protected registerBuiltinAttributes() {
     this.styleAttributeService.registerStyleAttribute({
@@ -155,12 +148,7 @@ export default class GreatCircleModel extends BaseModel {
           type: gl.FLOAT,
         },
         size: 1,
-        update: (
-          feature: IEncodeFeature,
-          featureIdx: number,
-          vertex: number[],
-          attributeIdx: number,
-        ) => {
+        update: (feature: IEncodeFeature) => {
           const { size = 1 } = feature;
           return Array.isArray(size) ? [size[0]] : [size as number];
         },
@@ -182,7 +170,6 @@ export default class GreatCircleModel extends BaseModel {
           feature: IEncodeFeature,
           featureIdx: number,
           vertex: number[],
-          attributeIdx: number,
         ) => {
           return [vertex[3], vertex[4], vertex[5], vertex[6]];
         },
@@ -201,12 +188,7 @@ export default class GreatCircleModel extends BaseModel {
           type: gl.FLOAT,
         },
         size: 2,
-        update: (
-          feature: IEncodeFeature,
-          featureIdx: number,
-          vertex: number[],
-          attributeIdx: number,
-        ) => {
+        update: (feature: IEncodeFeature) => {
           const iconMap = this.iconService.getIconMap();
           const { texture } = feature;
           // console.log('icon feature', feature)

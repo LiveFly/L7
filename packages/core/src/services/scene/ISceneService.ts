@@ -1,19 +1,16 @@
+import EventEmitter from 'eventemitter3';
 import { ISceneConfig } from '../config/IConfigService';
 import { ILayer } from '../layer/ILayerService';
-import { IMapConfig } from '../map/IMapService';
-import { IRenderConfig } from '../renderer/IRendererService';
 
-export interface ISceneService {
+export interface ISceneService extends EventEmitter {
   destroyed: boolean;
   loaded: boolean;
-  fontFamily: string;
-  loadFont: boolean;
-  on(type: string, handle: (...args: any[]) => void): void;
-  once(type: string, handle: (...args: any[]) => void): void;
-  off(type: string, handle: (...args: any[]) => void): void;
+  // on(type: string, handle: (...args: any[]) => void): void;
+  // once(type: string, handle: (...args: any[]) => void): void;
+  // off(type: string, handle: (...args: any[]) => void): void;
   removeAllListeners(event?: string): this;
-  init(config: IMapConfig & IRenderConfig): void;
-  initMiniScene(config: IMapConfig & IRenderConfig): void;
+  init(config: ISceneConfig): void;
+  initMiniScene(config: ISceneConfig): void;
   addLayer(layer: ILayer): void;
   addMask(mask: ILayer): void;
   getSceneConfig(): Partial<ISceneConfig>;
@@ -21,13 +18,14 @@ export interface ISceneService {
   render(): void;
   getSceneContainer(): HTMLDivElement;
   getMarkerContainer(): HTMLElement;
-  exportPng(type?: 'png' | 'jpg'): string;
+  exportPng(type?: 'png' | 'jpg'): Promise<string>;
   addFontFace(fontname: string, fontpath: string): void;
   destroy(): void;
 }
 // scene 事件
 export const SceneEventList: string[] = [
   'loaded',
+  'fontloaded',
   'maploaded',
   'resize',
   'destroy',

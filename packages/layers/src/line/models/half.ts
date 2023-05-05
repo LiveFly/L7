@@ -5,7 +5,7 @@ import {
   IModel,
   IModelUniform,
 } from '@antv/l7-core';
-import { getMask, rgb2arr } from '@antv/l7-utils';
+import { rgb2arr } from '@antv/l7-utils';
 import { isNumber } from 'lodash';
 import BaseModel from '../../core/BaseModel';
 import { ILineLayerStyleOptions } from '../../core/interface';
@@ -84,7 +84,7 @@ export default class LineModel extends BaseModel {
     };
   }
 
-  public initModels(): IModel[] {
+  public async initModels(): Promise<IModel[]> {
     return this.buildModels();
   }
 
@@ -92,26 +92,20 @@ export default class LineModel extends BaseModel {
     this.dataTexture?.destroy();
   }
 
-  public buildModels(): IModel[] {
-    const {
-      mask = false,
-      maskInside = true,
-      depth = false,
-    } = this.layer.getLayerConfig() as ILineLayerStyleOptions;
+  public async buildModels(): Promise<IModel[]> {
+    const { depth = false } =
+      this.layer.getLayerConfig() as ILineLayerStyleOptions;
     const { frag, vert } = this.getShaders();
     this.layer.triangulation = LineTriangulation;
-    return [
-      this.layer.buildLayerModel({
-        moduleName: 'line_half',
-        vertexShader: vert,
-        fragmentShader: frag,
-        triangulation: LineTriangulation,
-        primitive: gl.TRIANGLES,
-        blend: this.getBlend(),
-        depth: { enable: depth },
-        stencil: getMask(mask, maskInside),
-      }),
-    ];
+
+    const model = await this.layer.buildLayerModel({
+      moduleName: 'lineHalf',
+      vertexShader: vert,
+      fragmentShader: frag,
+      triangulation: LineTriangulation,
+      depth: { enable: depth },
+    });
+    return [model];
   }
 
   /**
@@ -165,13 +159,7 @@ export default class LineModel extends BaseModel {
           type: gl.FLOAT,
         },
         size: 4,
-        update: (
-          feature: IEncodeFeature,
-          featureIdx: number,
-          vertex: number[],
-          attributeIdx: number,
-        ) => {
-          // console.log(feature)
+        update: (feature: IEncodeFeature) => {
           const startPoint = (feature.coordinates[0] || [0, 0]) as number[];
           const endPoint = (feature.coordinates[3] || [0, 0]) as number[];
 
@@ -192,12 +180,7 @@ export default class LineModel extends BaseModel {
           type: gl.FLOAT,
         },
         size: 2,
-        update: (
-          feature: IEncodeFeature,
-          featureIdx: number,
-          vertex: number[],
-          attributeIdx: number,
-        ) => {
+        update: (feature: IEncodeFeature) => {
           const { size = 1 } = feature;
           return Array.isArray(size) ? [size[0], size[1]] : [size as number, 0];
         },
@@ -245,7 +228,6 @@ export default class LineModel extends BaseModel {
           feature: IEncodeFeature,
           featureIdx: number,
           vertex: number[],
-          attributeIdx: number,
         ) => {
           return [vertex[4]];
         },

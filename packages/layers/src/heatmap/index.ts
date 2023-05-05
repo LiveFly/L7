@@ -1,40 +1,41 @@
-import { IAttrubuteAndElements } from '@antv/l7-core';
+import { IAttributeAndElements, IRenderOptions } from '@antv/l7-core';
 import BaseLayer from '../core/BaseLayer';
 import { IHeatMapLayerStyleOptions } from '../core/interface';
 import HeatMapModels, { HeatMapModelType } from './models';
 export default class HeatMapLayer extends BaseLayer<IHeatMapLayerStyleOptions> {
   public type: string = 'HeatMapLayer';
 
-  public buildModels() {
+  public async buildModels() {
     const shape = this.getModelType();
     this.layerModel = new HeatMapModels[shape](this);
-    this.models = this.layerModel.initModels();
+    await this.initLayerModels();
   }
-  public rebuildModels() {
-    this.models = this.layerModel.buildModels();
-  }
-  public renderModels() {
+
+  public renderModels(options: Partial<IRenderOptions> = {}) {
     const shape = this.getModelType();
     if (shape === 'heatmap') {
       if (this.layerModel) {
-        this.layerModel.render(); // 独立的渲染流程
+        this.layerModel.render(options); // 独立的渲染流程
       }
 
       return this;
     }
-    if (this.layerModelNeedUpdate) {
-      this.models = this.layerModel.buildModels();
-      this.layerModelNeedUpdate = false;
+    if (this.encodeDataLength <= 0 && !this.forceRender) {
+      return this;
     }
+    this.hooks.beforeRender.call();
     this.models.forEach((model) =>
       model.draw({
         uniforms: this.layerModel.getUninforms(),
+        blend: this.layerModel.getBlend(),
+        stencil: this.layerModel.getStencil(options),
       }),
     );
+    this.hooks.afterRender.call();
     return this;
   }
 
-  public updateModelData(data: IAttrubuteAndElements) {
+  public updateModelData(data: IAttributeAndElements) {
     if (data.attributes && data.elements) {
       this.models[0].updateAttributesAndElements(
         data.attributes,
@@ -45,22 +46,9 @@ export default class HeatMapLayer extends BaseLayer<IHeatMapLayerStyleOptions> {
     }
   }
 
-  protected getConfigSchema() {
-    return {
-      properties: {
-        opacity: {
-          type: 'number',
-          minimum: 0,
-          maximum: 1,
-        },
-      },
-    };
-  }
-
-  protected getModelType(): HeatMapModelType {
-    const shapeAttribute = this.styleAttributeService.getLayerStyleAttribute(
-      'shape',
-    );
+  public getModelType(): HeatMapModelType {
+    const shapeAttribute =
+      this.styleAttributeService.getLayerStyleAttribute('shape');
     const { shape3d } = this.getLayerConfig();
     const source = this.getSource();
     const sourceType = source.data.type;

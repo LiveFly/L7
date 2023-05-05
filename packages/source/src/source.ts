@@ -2,12 +2,12 @@
 import { SyncHook } from '@antv/async-hook';
 import {
   IClusterOptions,
-  IMapService,
   IParseDataItem,
   IParserCfg,
   IParserData,
   ISource,
   ISourceCFG,
+  ITileParserCFG,
   ITransform,
 } from '@antv/l7-core';
 import {
@@ -32,8 +32,11 @@ function mergeCustomizer(objValue: any, srcValue: any) {
     return srcValue;
   }
 }
-
+//
 export default class Source extends EventEmitter implements ISource {
+  public type: string = 'source';
+  public isTile: boolean = false;
+  public inited: boolean = false;
   public data: IParserData;
   public center: [number, number];
   // 数据范围
@@ -42,8 +45,10 @@ export default class Source extends EventEmitter implements ISource {
   public hooks = {
     init: new SyncHook(),
   };
-
-  public parser: IParserCfg = { type: 'geojson' };
+  public getSourceCfg() {
+    return this.cfg;
+  }
+  public parser: IParserCfg | ITileParserCFG = { type: 'geojson' };
   public transforms: ITransform[] = [];
   public cluster: boolean = false;
   public clusterOptions: Partial<IClusterOptions> = {
@@ -56,16 +61,17 @@ export default class Source extends EventEmitter implements ISource {
 
   // 瓦片数据管理器
   public tileset: TilesetManager | undefined;
-  private readonly mapService: IMapService;
   // 是否有效范围
   private invalidExtent: boolean = false;
 
   private dataArrayChanged: boolean = false;
 
   // 原始数据
-  private originData: any;
-  private rawData: any;
-  private cfg: any = {};
+  protected originData: any;
+  protected rawData: any;
+  private cfg: Partial<ISourceCFG> = {
+    autoRender: true,
+  };
 
   private clusterIndex: Supercluster;
 
@@ -75,16 +81,12 @@ export default class Source extends EventEmitter implements ISource {
     this.originData = data;
     this.initCfg(cfg);
 
-    this.hooks.init.tap('parser', () => {
-      this.excuteParser();
+    this.init().then(() => {
+      this.inited = true;
+      this.emit('update', {
+        type: 'inited',
+      });
     });
-    this.hooks.init.tap('cluster', () => {
-      this.initCluster();
-    });
-    this.hooks.init.tap('transform', () => {
-      this.executeTrans();
-    });
-    this.init();
   }
 
   public getClusters(zoom: number): any {
@@ -93,6 +95,10 @@ export default class Source extends EventEmitter implements ISource {
 
   public getClustersLeaves(id: number): any {
     return this.clusterIndex.getLeaves(id, Infinity);
+  }
+
+  public getParserType() {
+    return this.parser.type;
   }
 
   public updateClusterData(zoom: number): void {
@@ -136,7 +142,7 @@ export default class Source extends EventEmitter implements ISource {
   }
 
   public getFeatureById(id: number): unknown {
-    const { type = 'geojson' } = this.parser;
+    const { type = 'geojson', geometry } = this.parser as IParserCfg;
     if (type === 'geojson' && !this.cluster) {
       const feature =
         id < this.originData.features.length
@@ -144,7 +150,10 @@ export default class Source extends EventEmitter implements ISource {
           : 'null';
       const newFeature = cloneDeep(feature);
 
-      if (this.transforms.length !== 0 || this.dataArrayChanged) {
+      if (
+        newFeature?.properties &&
+        (this.transforms.length !== 0 || this.dataArrayChanged)
+      ) {
         // 如果数据进行了transforms 属性会发生改变 或者数据dataArray发生更新
         const item = this.data.dataArray.find((dataItem: IParseDataItem) => {
           return dataItem._id === id;
@@ -152,6 +161,8 @@ export default class Source extends EventEmitter implements ISource {
         newFeature.properties = item;
       }
       return newFeature;
+    } else if (type === 'json' && geometry) {
+      return this.data.dataArray.find((dataItem) => dataItem._id === id);
     } else {
       return id < this.data.dataArray.length ? this.data.dataArray[id] : 'null';
     }
@@ -173,7 +184,9 @@ export default class Source extends EventEmitter implements ISource {
       },
     );
     this.dataArrayChanged = true;
-    this.emit('update');
+    this.emit('update', {
+      type: 'update',
+    });
   }
 
   public getFeatureId(field: string, value: any): number | undefined {
@@ -187,8 +200,12 @@ export default class Source extends EventEmitter implements ISource {
     this.originData = data;
     this.dataArrayChanged = false;
     this.initCfg(options);
-    this.init();
-    this.emit('update');
+
+    this.init().then(() => {
+      this.emit('update', {
+        type: 'update',
+      });
+    });
   }
 
   public destroy() {
@@ -198,6 +215,19 @@ export default class Source extends EventEmitter implements ISource {
     // @ts-ignore
     this.data = null;
     this.tileset?.destroy();
+  }
+
+  private async processData() {
+    return new Promise((resolve, reject) => {
+      try {
+        this.excuteParser();
+        this.initCluster();
+        this.executeTrans();
+        resolve({});
+      } catch (err) {
+        reject(err);
+      }
+    });
   }
 
   private initCfg(option?: ISourceCFG) {
@@ -221,25 +251,41 @@ export default class Source extends EventEmitter implements ISource {
     }
   }
 
-  private init() {
-    this.hooks.init.call(this);
+  private async init() {
+    this.inited = false;
+    await this.processData();
+    this.inited = true;
   }
 
   /**
    * 数据解析
    */
   private excuteParser(): void {
-    const parser = this.parser;
+    // 耗时计算测试
+    // let t = new Date().getTime();
+    // let c = 0
+    // while(c < 100000000) {
+    //   c++
+    // }
+    // console.log('t', new Date().getTime() - t)
+    const parser = this.parser as IParserCfg;
     const type: string = parser.type || 'geojson';
     const sourceParser = getParser(type);
     this.data = sourceParser(this.originData, parser);
+
+    // 为瓦片图层的父图层创建数据瓦片金字塔管理器
+    this.tileset = this.initTileset();
+
+    // 判断当前 source 是否需要计算范围
+    if (parser.cancelExtent) {
+      return;
+    }
+
     // 计算范围
     this.extent = extent(this.data.dataArray);
     this.setCenter(this.extent);
     this.invalidExtent =
       this.extent[0] === this.extent[2] || this.extent[1] === this.extent[3];
-    // 瓦片数据
-    this.tileset = this.initTileset();
   }
 
   private setCenter(bbox: BBox) {
@@ -259,7 +305,7 @@ export default class Source extends EventEmitter implements ISource {
     if (!tilesetOptions) {
       return;
     }
-
+    this.isTile = true;
     if (this.tileset) {
       this.tileset.updateOptions(tilesetOptions);
       return this.tileset;

@@ -3,17 +3,20 @@ import {
   gl,
   IAnimateOption,
   IEncodeFeature,
-  IImage,
   ILayerConfig,
   IModel,
   IModelUniform,
   ITexture2D,
 } from '@antv/l7-core';
-import { getMask, rgb2arr } from '@antv/l7-utils';
+import { LineTriangulation, rgb2arr } from '@antv/l7-utils';
 import { isNumber } from 'lodash';
 import BaseModel from '../../core/BaseModel';
-import { ILineLayerStyleOptions } from '../../core/interface';
-import { LineTriangulation } from '../../core/triangulation';
+import {
+  ILineLayerStyleOptions,
+  LinearDir,
+  TextureBlend,
+} from '../../core/interface';
+// import { LineTriangulation } from '../../core/triangulation';
 // dash line shader
 import line_dash_frag from '../shaders/dash/line_dash_frag.glsl';
 import line_dash_vert from '../shaders/dash/line_dash_vert.glsl';
@@ -28,7 +31,15 @@ const lineStyleObj: { [key: string]: number } = {
   dash: 1.0,
 };
 export default class LineModel extends BaseModel {
-  protected texture: ITexture2D;
+  private textureEventFlag: boolean = false;
+  protected texture: ITexture2D = this.createTexture2D({
+    data: [0, 0, 0, 0],
+    mag: gl.NEAREST,
+    min: gl.NEAREST,
+    premultiplyAlpha: false,
+    width: 1,
+    height: 1,
+  });
   public getUninforms(): IModelUniform {
     const {
       opacity = 1,
@@ -44,6 +55,8 @@ export default class LineModel extends BaseModel {
       borderColor = '#ccc',
       raisingHeight = 0,
       heightfixed = false,
+      linearDir = LinearDir.VERTICAL, // 默认纵向
+      blur = [1, 1, 1],
       arrow = {
         enable: false,
         arrowWidth: 2,
@@ -55,7 +68,7 @@ export default class LineModel extends BaseModel {
       dashArray.push(0, 0);
     }
 
-    if (this.rendererService.getDirty()) {
+    if (this.rendererService.getDirty() && this.texture) {
       this.texture.bind();
     }
 
@@ -77,6 +90,7 @@ export default class LineModel extends BaseModel {
         encodeData,
         this.cellProperties,
       );
+
       this.rowCount = height; // 当前数据纹理有多少行
 
       this.dataTexture =
@@ -102,9 +116,11 @@ export default class LineModel extends BaseModel {
       u_dataTexture: this.dataTexture, // 数据纹理 - 有数据映射的时候纹理中带数据，若没有任何数据映射时纹理是 [1]
       u_cellTypeLayout: this.getCellTypeLayout(),
       u_opacity: isNumber(opacity) ? opacity : 1.0,
-      u_textureBlend: textureBlend === 'normal' ? 0.0 : 1.0,
+      u_textureBlend: textureBlend === TextureBlend.NORMAL ? 0.0 : 1.0,
       u_line_type: lineStyleObj[lineType],
       u_dash_array: dashArray,
+
+      u_blur: blur,
 
       // 纹理支持参数
       u_texture: this.texture, // 贴图
@@ -117,6 +133,7 @@ export default class LineModel extends BaseModel {
       u_borderColor: rgb2arr(borderColor),
 
       // 渐变色支持参数
+      u_linearDir: linearDir === LinearDir.VERTICAL ? 1.0 : 0.0,
       u_linearColor: useLinearColor,
       u_sourceColor: sourceColorArr,
       u_targetColor: targetColorArr,
@@ -138,15 +155,19 @@ export default class LineModel extends BaseModel {
   public getAnimateUniforms(): IModelUniform {
     const { animateOption } = this.layer.getLayerConfig() as ILayerConfig;
     return {
-      u_aimate: this.animateOption2Array(animateOption as IAnimateOption),
+      u_animate: this.animateOption2Array(animateOption as IAnimateOption),
       u_time: this.layer.getLayerAnimateTime(),
     };
   }
 
-  public initModels(): IModel[] {
-    this.updateTexture();
-    this.iconService.on('imageUpdate', this.updateTexture);
-
+  public async initModels(): Promise<IModel[]> {
+    // this.updateTexture();
+    // this.iconService.on('imageUpdate', this.updateTexture);
+    if (!this.textureEventFlag) {
+      this.textureEventFlag = true;
+      this.updateTexture();
+      this.iconService.on('imageUpdate', this.updateTexture);
+    }
     return this.buildModels();
   }
 
@@ -156,27 +177,30 @@ export default class LineModel extends BaseModel {
     this.iconService.off('imageUpdate', this.updateTexture);
   }
 
-  public buildModels(): IModel[] {
+  public async buildModels(): Promise<IModel[]> {
     const {
-      mask = false,
-      maskInside = true,
       depth = false,
+      workerEnabled = false,
+      enablePicking,
     } = this.layer.getLayerConfig() as ILineLayerStyleOptions;
     const { frag, vert, type } = this.getShaders();
+    // console.log(frag)
     this.layer.triangulation = LineTriangulation;
-    return [
-      this.layer.buildLayerModel({
-        moduleName: 'line_' + type,
-        vertexShader: vert,
-        fragmentShader: frag,
-        triangulation: LineTriangulation,
-        primitive: gl.TRIANGLES,
-        blend: this.getBlend(),
-        depth: { enable: depth },
-        // depth: { enable: true },
-        stencil: getMask(mask, maskInside),
-      }),
-    ];
+    const model = await this.layer.buildLayerModel({
+      moduleName: 'line' + type,
+      vertexShader: vert,
+      fragmentShader: frag,
+      triangulation: LineTriangulation,
+      depth: { enable: depth },
+
+      workerEnabled,
+      workerOptions: {
+        modelType: 'line' + type,
+        enablePicking,
+        iconMap: this.iconService.getIconMap(),
+      },
+    });
+    return [model];
   }
 
   /**
@@ -184,17 +208,14 @@ export default class LineModel extends BaseModel {
    * @returns
    */
   public getShaders(): { frag: string; vert: string; type: string } {
-    const {
-      sourceColor,
-      targetColor,
-      lineType,
-    } = this.layer.getLayerConfig() as ILineLayerStyleOptions;
+    const { sourceColor, targetColor, lineType } =
+      this.layer.getLayerConfig() as ILineLayerStyleOptions;
 
     if (lineType === 'dash') {
       return {
         frag: line_dash_frag,
         vert: line_dash_vert,
-        type: 'dash',
+        type: 'Dash',
       };
     }
 
@@ -203,13 +224,13 @@ export default class LineModel extends BaseModel {
       return {
         frag: linear_line_frag,
         vert: line_vert,
-        type: 'linear',
+        type: 'Linear',
       };
     } else {
       return {
         frag: line_frag,
         vert: line_vert,
-        type: 'normal',
+        type: '',
       };
     }
   }
@@ -257,7 +278,6 @@ export default class LineModel extends BaseModel {
           feature: IEncodeFeature,
           featureIdx: number,
           vertex: number[],
-          attributeIdx: number,
         ) => {
           return [vertex[5]];
         },
@@ -276,12 +296,7 @@ export default class LineModel extends BaseModel {
           type: gl.FLOAT,
         },
         size: 2,
-        update: (
-          feature: IEncodeFeature,
-          featureIdx: number,
-          vertex: number[],
-          attributeIdx: number,
-        ) => {
+        update: (feature: IEncodeFeature) => {
           const { size = 1 } = feature;
           return Array.isArray(size) ? [size[0], size[1]] : [size as number, 0];
         },
@@ -329,7 +344,6 @@ export default class LineModel extends BaseModel {
           feature: IEncodeFeature,
           featureIdx: number,
           vertex: number[],
-          attributeIdx: number,
         ) => {
           return [vertex[4]];
         },
@@ -348,12 +362,7 @@ export default class LineModel extends BaseModel {
           type: gl.FLOAT,
         },
         size: 2,
-        update: (
-          feature: IEncodeFeature,
-          featureIdx: number,
-          vertex: number[],
-          attributeIdx: number,
-        ) => {
+        update: (feature: IEncodeFeature) => {
           const iconMap = this.iconService.getIconMap();
           const { texture } = feature;
           const { x, y } = iconMap[texture as string] || { x: 0, y: 0 };

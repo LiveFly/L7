@@ -1,14 +1,5 @@
-import {
-  CameraUniform,
-  CoordinateUniform,
-  ICameraService,
-  ICoordinateSystemService,
-  ILayer,
-  ILayerPlugin,
-  IRendererService,
-  TYPES,
-} from '@antv/l7-core';
-import { inject, injectable } from 'inversify';
+import { ILayer, ILayerPlugin } from '@antv/l7-core';
+import { injectable } from 'inversify';
 import 'reflect-metadata';
 
 const lightTypeUniformMap = {
@@ -74,8 +65,6 @@ const DEFAULT_SPOT_LIGHT = {
   blur: 5,
 };
 
-const COLOR_ATTRIBUTES = ['ambient', 'diffuse', 'specular'];
-
 export function generateLightingUniforms(
   lights?: Array<Partial<IDirectionalLight | ISpotLight>>,
 ) {
@@ -93,15 +82,9 @@ export function generateLightingUniforms(
   if (!lights || !lights.length) {
     lights = [DEFAULT_LIGHT];
   }
-  lights.forEach(({ type = 'directional', ...rest }, i) => {
+  lights.forEach(({ type = 'directional', ...rest }) => {
     const lightsUniformName = lightTypeUniformMap[type].lights;
     const lightsNumUniformName = lightTypeUniformMap[type].num;
-
-    // Object.keys(rest).forEach(key => {
-    //   if (Util.isString(rest[key]) && COLOR_ATTRIBUTES.indexOf(key) > -1) {
-    //     rest[key] = ColorUtil.color2RGBA(rest[key]).slice(0, 3);
-    //   }
-    // });
 
     // @ts-ignore
     const num = lightsMap[lightsNumUniformName];

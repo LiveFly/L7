@@ -1,12 +1,8 @@
-import { ILayer, IMercator } from '@antv/l7-core';
-import { BaseLayer } from '@antv/l7-layers';
+import { BaseLayer, ILayer, IMercator, ISourceCFG } from '@antv/l7';
 import {
   AnimationMixer,
-  Camera,
   Matrix4,
   Object3D,
-  PCFSoftShadowMap,
-  PerspectiveCamera,
   Scene,
   Vector3,
   WebGLRenderer,
@@ -15,13 +11,13 @@ import {
   IThreeRenderService,
   ThreeRenderServiceType,
 } from './threeRenderService';
-const DEG2RAD = Math.PI / 180;
 type ILngLat = [number, number];
 export default class ThreeJSLayer
   extends BaseLayer<{
     onAddMeshes: (threeScene: Scene, layer: ThreeJSLayer) => void;
   }>
-  implements ILayer {
+  implements ILayer
+{
   public type: string = 'custom';
   public threeRenderService: IThreeRenderService;
   public isUpdate: boolean = false;
@@ -32,6 +28,30 @@ export default class ThreeJSLayer
   private animateMixer: AnimationMixer[] = [];
   // 地图中点墨卡托坐标
   private center: IMercator;
+  public defaultSourceConfig: {
+    data: any;
+    options: ISourceCFG | undefined;
+  } = {
+    data: {
+      type: 'FeatureCollection',
+      features: [
+        {
+          type: 'Feature',
+          properties: {},
+          geometry: {
+            type: 'Point',
+            coordinates: [0, 0],
+          },
+        },
+      ],
+    },
+    options: {
+      parser: {
+        type: 'geojson',
+      },
+    },
+  };
+  public forceRender: boolean = true;
 
   public setUpdate(callback: () => void) {
     this.update = callback;
@@ -111,8 +131,8 @@ export default class ThreeJSLayer
    * @param object
    * @returns
    */
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   public getObjectLngLat(object: Object3D) {
-    const coord = [object.position.x, object.position.y];
     return [0, 0] as ILngLat;
   }
 
@@ -150,7 +170,7 @@ export default class ThreeJSLayer
     object.applyMatrix4(scaleMatrix);
   }
 
-  public buildModels() {
+  public async buildModels() {
     // @ts-ignore
     this.threeRenderService = this.getContainer().get<IThreeRenderService>(
       ThreeRenderServiceType,
@@ -161,6 +181,9 @@ export default class ThreeJSLayer
     }
   }
   public renderModels() {
+    if (!this.threeRenderService) {
+      return this;
+    }
     if (this.isUpdate && this.update) {
       this.update();
     }
@@ -178,7 +201,6 @@ export default class ThreeJSLayer
 
     // 获取相机 （不同的地图获取对应的方式不同）
     const camera = this.threeRenderService.getRenderCamera();
-
     renderer.render(this.scene, camera);
 
     this.rendererService.setState();
@@ -192,7 +214,6 @@ export default class ThreeJSLayer
   }
 
   public renderAMapModels() {
-    const gl = this.rendererService.getGLContext();
     // gl.frontFace(gl.CCW);
     // gl.enable(gl.CULL_FACE);
     // gl.cullFace(gl.BACK);
@@ -215,13 +236,5 @@ export default class ThreeJSLayer
 
   public addAnimateMixer(mixer: AnimationMixer) {
     this.animateMixer.push(mixer);
-  }
-
-  public setBottomColor(color: string): void {
-    console.warn('empty function');
-  }
-
-  public getBottomColor() {
-    return 'rgba(0, 0, 0, 0)';
   }
 }

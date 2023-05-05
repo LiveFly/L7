@@ -1,6 +1,7 @@
 import {
   ILngLat,
   IMapService,
+  IMarkerContainerAndBounds,
   IMarkerOption,
   IPoint,
   IPopup,
@@ -13,10 +14,10 @@ import {
   applyAnchorClass,
   bindAll,
   DOM,
+  isPC,
 } from '@antv/l7-utils';
 import { EventEmitter } from 'eventemitter3';
 import { Container } from 'inversify';
-
 //  marker 支持 dragger 未完成
 export default class Marker extends EventEmitter {
   private markerOption: IMarkerOption;
@@ -27,13 +28,16 @@ export default class Marker extends EventEmitter {
   private lngLat: ILngLat;
   private scene: Container;
   private added: boolean = false;
+  // tslint:disable-next-line: no-empty
+  public getMarkerLayerContainerSize(): IMarkerContainerAndBounds | void {}
+
   constructor(option?: Partial<IMarkerOption>) {
     super();
     this.markerOption = {
       ...this.getDefault(),
       ...option,
     };
-    bindAll(['update', 'onMove', 'onUp', 'addDragHandler', 'onMapClick'], this);
+    bindAll(['update', 'onMove', 'onMapClick'], this);
     this.init();
   }
 
@@ -52,12 +56,11 @@ export default class Marker extends EventEmitter {
     this.scene = scene;
     this.mapsService = scene.get<IMapService>(TYPES.IMapService);
     this.sceneSerive = scene.get<ISceneService>(TYPES.ISceneService);
-    const { element, draggable } = this.markerOption;
+    const { element } = this.markerOption;
     // this.sceneSerive.getSceneContainer().appendChild(element as HTMLElement);
     this.mapsService.getMarkerContainer().appendChild(element as HTMLElement);
     this.registerMarkerEvent(element as HTMLElement);
     this.mapsService.on('camerachange', this.update); // 注册高德1.x 的地图事件监听
-    this.mapsService.on('viewchange', this.update); // 注册高德2.0 的地图事件监听
     this.update();
     this.added = true;
     this.emit('added');
@@ -69,10 +72,7 @@ export default class Marker extends EventEmitter {
       this.mapsService.off('click', this.onMapClick);
       this.mapsService.off('move', this.update);
       this.mapsService.off('moveend', this.update);
-      this.mapsService.off('mousedown', this.addDragHandler);
-      this.mapsService.off('touchstart', this.addDragHandler);
-      this.mapsService.off('mouseup', this.onUp);
-      this.mapsService.off('touchend', this.onUp);
+      this.mapsService.off('camerachange', this.update);
     }
     this.unRegisterMarkerEvent();
     this.removeAllListeners();
@@ -187,6 +187,7 @@ export default class Marker extends EventEmitter {
     return this.markerOption.offsets;
   }
 
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   public setDraggable(draggable: boolean) {
     throw new Error('Method not implemented.');
   }
@@ -212,6 +213,7 @@ export default class Marker extends EventEmitter {
     DOM.setTransform(element as HTMLElement, `${anchorTranslate[anchor]}`);
   }
 
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   private onMapClick(e: MouseEvent) {
     const { element } = this.markerOption;
     if (this.popup && element) {
@@ -219,24 +221,29 @@ export default class Marker extends EventEmitter {
     }
   }
 
+  private getCurrentContainerSize() {
+    const container = this.mapsService.getContainer();
+    return {
+      containerHeight: container?.scrollHeight || 0,
+      containerWidth: container?.scrollWidth || 0,
+      bounds: this.mapsService.getBounds(),
+    };
+  }
   private updatePosition() {
     if (!this.mapsService) {
       return;
     }
     const { element, offsets } = this.markerOption;
     const { lng, lat } = this.lngLat;
-    const bounds = this.mapsService.getBounds();
     const pos = this.mapsService.lngLatToContainer([lng, lat]);
-
     if (element) {
       element.style.display = 'block';
       element.style.whiteSpace = 'nowrap';
-      const container = this.mapsService.getContainer();
-      let containerWidth = 0;
-      let containerHeight = 0;
-      if (container) {
-        containerWidth = container.scrollWidth;
-        containerHeight = container.scrollHeight;
+      const { containerHeight, containerWidth, bounds } =
+        this.getMarkerLayerContainerSize() || this.getCurrentContainerSize();
+
+      if (!bounds) {
+        return;
       }
       // 当前可视区域包含跨日界线
       if (Math.abs(bounds[0][0]) > 180 || Math.abs(bounds[1][0]) > 180) {
@@ -304,13 +311,10 @@ export default class Marker extends EventEmitter {
       },
     );
 
-    element.addEventListener('click', (e: MouseEvent) => {
-      this.onMapClick(e);
-    });
-    element.addEventListener('click', this.eventHandle);
     applyAnchorClass(element, anchor, 'marker');
   }
   private registerMarkerEvent(element: HTMLElement) {
+    element.addEventListener('click', this.onMapClick);
     element.addEventListener('mousemove', this.eventHandle);
     element.addEventListener('click', this.eventHandle);
     element.addEventListener('mousedown', this.eventHandle);
@@ -319,9 +323,12 @@ export default class Marker extends EventEmitter {
     element.addEventListener('contextmenu', this.eventHandle);
     element.addEventListener('mouseover', this.eventHandle);
     element.addEventListener('mouseout', this.eventHandle);
+    element.addEventListener('touchstart', this.eventHandle);
+    element.addEventListener('touchend', this.eventHandle);
   }
   private unRegisterMarkerEvent() {
     const element = this.getElement();
+    element.removeEventListener('click', this.onMapClick);
     element.removeEventListener('mousemove', this.eventHandle);
     element.removeEventListener('click', this.eventHandle);
     element.removeEventListener('mousedown', this.eventHandle);
@@ -330,19 +337,48 @@ export default class Marker extends EventEmitter {
     element.removeEventListener('contextmenu', this.eventHandle);
     element.removeEventListener('mouseover', this.eventHandle);
     element.removeEventListener('mouseout', this.eventHandle);
+    element.removeEventListener('touchstart', this.eventHandle);
+    element.removeEventListener('touchend', this.eventHandle);
   }
 
-  private eventHandle = (e: MouseEvent) => {
+  private eventHandle = (e: MouseEvent | TouchEvent) => {
+    this.polyfillEvent(e);
     this.emit(e.type, {
       target: e,
       data: this.markerOption.extData,
       lngLat: this.lngLat,
     });
   };
-  private addDragHandler(e: MouseEvent) {
-    throw new Error('Method not implemented.');
+
+  /**
+   * 高德 2.x 使用了 fastClick.js 避免延迟，导致 IOS 移动端的 click 事件不会正常触发，需要手动触发
+   * @param e
+   */
+  private touchStartTime: number;
+  private polyfillEvent(e: MouseEvent | TouchEvent) {
+    if (!this.mapsService || this.mapsService.version !== 'GAODE2.x') {
+      return;
+    }
+    if (!isPC()) {
+      if (e.type === 'touchstart') {
+        this.touchStartTime = Date.now();
+      }
+      if (e.type === 'touchend' && Date.now() - this.touchStartTime < 300) {
+        this.emit('click', {
+          target: e,
+          data: this.markerOption.extData,
+          lngLat: this.lngLat,
+        });
+      }
+    }
   }
 
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  private addDragHandler(e: MouseEvent) {
+    return null;
+  }
+
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   private onUp(e: MouseEvent) {
     throw new Error('Method not implemented.');
   }

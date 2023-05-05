@@ -8,18 +8,16 @@ import Point, { PointLike } from './geo/point';
 import Transform from './geo/transform';
 import { Event } from './handler/events/event';
 import { IMapOptions } from './interface';
-type CallBack = (_: number) => void;
 import {
-  cancel,
   clamp,
   ease as defaultEasing,
   interpolate,
   now,
   pick,
   prefersReducedMotion,
-  raf,
   wrap,
 } from './util';
+type CallBack = (_: number) => void;
 
 export interface ICameraOptions {
   center?: LngLatLike;
@@ -81,9 +79,11 @@ export default class Camera extends EventEmitter {
       renderWorldCopies,
     );
   }
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   public requestRenderFrame(cb: CallBack): number {
     return 0;
   }
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   public cancelRenderFrame(_: number): void {
     return;
   }
@@ -246,7 +246,7 @@ export default class Camera extends EventEmitter {
     let bearingChanged = false;
     let pitchChanged = false;
 
-    if (options.zoom && tr.zoom !== +options.zoom) {
+    if (options.zoom !== undefined && tr.zoom !== +options.zoom) {
       zoomChanged = true;
       tr.zoom = +options.zoom;
     }
@@ -255,17 +255,16 @@ export default class Camera extends EventEmitter {
       tr.center = LngLat.convert(options.center);
     }
 
-    if (options.bearing && tr.bearing !== +options.bearing) {
+    if (options.bearing !== undefined && tr.bearing !== +options.bearing) {
       bearingChanged = true;
       tr.bearing = +options.bearing;
     }
-
-    if (options.pitch && tr.pitch !== +options.pitch) {
+    if (options.pitch !== undefined && tr.pitch !== +options.pitch) {
       pitchChanged = true;
       tr.pitch = +options.pitch;
     }
 
-    if (options.padding != null && !tr.isPaddingEqual(options.padding)) {
+    if (options.padding !== undefined && !tr.isPaddingEqual(options.padding)) {
       tr.padding = options.padding;
     }
 
@@ -863,10 +862,7 @@ export default class Camera extends EventEmitter {
     );
 
     const center = tr.unproject(
-      p0world
-        .add(p1world)
-        .div(2)
-        .sub(offsetAtFinalZoom),
+      p0world.add(p1world).div(2).sub(offsetAtFinalZoom),
     );
 
     return {

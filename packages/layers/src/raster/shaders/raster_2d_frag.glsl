@@ -9,20 +9,24 @@ uniform float u_noDataValue;
 uniform bool u_clampLow: true;
 uniform bool u_clampHigh: true;
 varying vec2 v_texCoord;
+bool isnan_emu(float x) { return (x > 0.0 || x < 0.0) ? x != x : x != 0.0; }
+
 
 void main() {
 
   float value = texture2D(u_texture,vec2(v_texCoord.x,v_texCoord.y)).r;
-  if (value == u_noDataValue)
-    gl_FragColor = vec4(0.0, 0, 0, 0.0);
+  if (value == u_noDataValue || isnan_emu(value))
+      discard;
   else if ((!u_clampLow && value < u_domain[0]) || (!u_clampHigh && value > u_domain[1]))
-    gl_FragColor = vec4(0, 0, 0, 0);
+     discard;
   else {
     float normalisedValue =(value - u_domain[0]) / (u_domain[1] -u_domain[0]);
     vec4 color = texture2D(u_colorTexture,vec2(normalisedValue, 0));
+    
     gl_FragColor = color;
     gl_FragColor.a =  gl_FragColor.a * u_opacity ;
+    if(gl_FragColor.a < 0.01)
+      discard;
+   
   }
-
-
 }

@@ -1,9 +1,8 @@
-import { ILayerConfig, IModelUniform } from '@antv/l7-core';
+import { ILayerConfig } from '@antv/l7-core';
 import BaseModel from '../../core/BaseModel';
 import {
   CanvasUpdateType,
   ICanvasLayerStyleOptions,
-  IDrawingOnCanvas,
 } from '../../core/interface';
 
 export default class CanvaModel extends BaseModel {
@@ -61,10 +60,9 @@ export default class CanvaModel extends BaseModel {
     this.unBindListener();
   }
 
-  public initModels() {
-    const {
-      update = CanvasUpdateType.ALWAYS,
-    } = this.layer.getLayerConfig() as ICanvasLayerStyleOptions;
+  public async initModels() {
+    const { update = CanvasUpdateType.ALWAYS } =
+      this.layer.getLayerConfig() as ICanvasLayerStyleOptions;
     this.updateMode = update as CanvasUpdateType;
     this.initCanvas();
 
@@ -80,10 +78,8 @@ export default class CanvaModel extends BaseModel {
     const { zIndex } = this.layer.getLayerConfig() as ICanvasLayerStyleOptions;
     const size = this.mapService.getSize();
     const [width, height] = size;
-    const {
-      width: viewWidth,
-      height: viewHeight,
-    } = this.rendererService.getViewportSize();
+    const { width: viewWidth, height: viewHeight } =
+      this.rendererService.getViewportSize();
     this.prevSize = [viewWidth, viewHeight];
 
     const canvas = document.createElement('canvas');
@@ -111,10 +107,8 @@ export default class CanvaModel extends BaseModel {
   };
 
   public renderCanvas = () => {
-    const {
-      width: viewWidth,
-      height: viewHeight,
-    } = this.rendererService.getViewportSize();
+    const { width: viewWidth, height: viewHeight } =
+      this.rendererService.getViewportSize();
     if (this.prevSize[0] !== viewWidth || this.prevSize[1] !== viewHeight) {
       this.prevSize = [viewWidth, viewHeight];
       const size = this.mapService.getSize();
@@ -125,9 +119,8 @@ export default class CanvaModel extends BaseModel {
       this.canvas.style.height = height + 'px';
     }
 
-    const {
-      drawingOnCanvas,
-    } = this.layer.getLayerConfig() as ICanvasLayerStyleOptions;
+    const { drawingOnCanvas } =
+      this.layer.getLayerConfig() as ICanvasLayerStyleOptions;
 
     if (this.ctx) {
       drawingOnCanvas({
@@ -139,7 +132,7 @@ export default class CanvaModel extends BaseModel {
     }
   };
 
-  public buildModels() {
+  public async buildModels() {
     return this.initModels();
   }
 

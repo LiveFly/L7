@@ -1,12 +1,10 @@
-import { IMapService, IMercator, IRendererService, TYPES } from '@antv/l7-core';
+import { IMapService, IMercator, IRendererService, TYPES } from '@antv/l7';
 import { inject, injectable } from 'inversify';
 import 'reflect-metadata';
 
 import {
-  AnimationMixer,
   Camera,
   Matrix4,
-  PCFSoftShadowMap,
   PerspectiveCamera,
   Scene as ThreeScene,
   WebGLRenderer,
@@ -84,6 +82,8 @@ export class ThreeRenderService implements IThreeRenderService {
         return this.AMap2Camera();
       case 'MAPBOX':
         return this.mapboxCamera();
+      case 'DEFAULTMAP':
+        return this.mapboxCamera();
       default:
         return this.AMapCamera();
     }
@@ -139,14 +139,8 @@ export class ThreeRenderService implements IThreeRenderService {
     customCoords.getCenter();
 
     const camera = this.camera;
-    const {
-      near,
-      far,
-      fov,
-      up,
-      lookAt,
-      position,
-    } = customCoords.getCameraParams();
+    const { near, far, fov, up, lookAt, position } =
+      customCoords.getCameraParams();
     // @ts-ignore
     camera.near = near;
     // @ts-ignore

@@ -1,8 +1,12 @@
 import { IEncodeFeature } from '@antv/l7-core';
-import { aProjectFlat, lngLatToMeters } from '@antv/l7-utils';
+import {
+  calculateCentroid,
+  calculatePointsCenterAndRadius,
+  lngLatToMeters,
+} from '@antv/l7-utils';
 import earcut from 'earcut';
 // @ts-ignore
-import { mat4, vec3 } from 'gl-matrix';
+import { vec3 } from 'gl-matrix';
 import {
   EARTH_RADIUS,
   EARTH_RADIUS_OUTER,
@@ -11,10 +15,6 @@ import {
   primitiveSphere,
 } from '../earth/utils';
 import ExtrudePolyline from '../utils/extrude_polyline';
-import {
-  calculateCentroid,
-  calculatePointsCenterAndRadius,
-} from '../utils/geo';
 import extrudePolygon, {
   extrude_PolygonNormal,
   fillPolygon,
@@ -145,48 +145,137 @@ export function LineTriangulation(feature: IEncodeFeature) {
 }
 
 export function SimpleLineTriangulation(feature: IEncodeFeature) {
-  const { coordinates, originCoordinates, version } = feature;
-
-  const line = new ExtrudePolyline({
-    dash: true,
-    join: 'bevel',
+  const { coordinates } = feature;
+  const pos: any[] = [];
+  if (!Array.isArray(coordinates[0])) {
+    return {
+      vertices: [],
+      indices: [],
+      normals: [],
+      size: 6,
+      count: 0,
+    };
+  }
+  const { results, totalDistance } = getSimpleLineVertices(
+    coordinates as IPosition[],
+  );
+  results.map((point) => {
+    pos.push(point[0], point[1], point[2], point[3], 0, totalDistance);
   });
 
-  if (version === 'GAODE2.x') {
-    // 处理高德2.0几何体构建
-    let path1 = coordinates as number[][][] | number[][]; // 计算位置
-    if (!Array.isArray(path1[0][0])) {
-      path1 = [coordinates] as number[][][];
-    }
-    let path2 = originCoordinates as number[][][] | number[][]; // 计算法线
-    if (!Array.isArray(path2[0][0])) {
-      path2 = [originCoordinates] as number[][][];
-    }
+  return {
+    vertices: pos,
+    indices: [],
+    normals: [],
+    size: 6,
+    count: results.length,
+  };
+}
 
-    for (let i = 0; i < path1.length; i++) {
-      // 高德2.0在计算线时，需要使用经纬度计算发现，使用 customCoords.lnglatToCoords 计算的数据来计算顶点的位置
-      const item1 = path1[i];
-      const item2 = path2[i];
-      line.simpleExtrude_gaode2(item1 as number[][], item2 as number[][]);
-    }
-  } else {
-    // 处理非高德2.0的几何体构建
-    let path = coordinates as number[][][] | number[][];
-    if (path[0] && !Array.isArray(path[0][0])) {
-      path = [coordinates] as number[][][];
-    }
-    path.forEach((item: any) => {
-      line.simpleExtrude(item as number[][]);
-    });
+export function TileSimpleLineTriangulation(feature: IEncodeFeature) {
+  const { coordinates } = feature;
+  const pos: any[] = [];
+  if (!Array.isArray(coordinates[0])) {
+    return {
+      vertices: [],
+      indices: [],
+      size: 4,
+      count: 0,
+    };
+  }
+  const { results } = getTileSimpleLineVertices(coordinates as IPosition[]);
+  results.map((point) => {
+    pos.push(point[0], point[1], point[2], point[3]);
+  });
+
+  return {
+    vertices: pos,
+    indices: [],
+    size: 4,
+    count: results.length,
+  };
+}
+
+function lineSegmentDistance(b1: number[], a1: number[]) {
+  const dx = a1[0] - b1[0];
+  const dy = a1[1] - b1[1];
+  return Math.sqrt(dx * dx + dy * dy);
+}
+
+function pushDis(point: number[], n?: number) {
+  if (point.length < 3) {
+    point.push(0);
+  }
+  if (n !== undefined) {
+    point.push(n);
+  }
+  return point;
+}
+
+function getSimpleLineVertices(coordinates: number[][]) {
+  let points = coordinates;
+  if (
+    Array.isArray(points) &&
+    Array.isArray(points[0]) &&
+    Array.isArray(points[0][0])
+  ) {
+    // @ts-ignore
+    points = coordinates.flat();
   }
 
-  const linebuffer = line.complex;
-  return {
-    vertices: linebuffer.positions, // [ x,y,z, distance, miter,total ]
-    indices: linebuffer.indices,
-    normals: linebuffer.normals,
-    size: 6,
-  };
+  let distance = 0;
+  if (points.length < 2) {
+    return {
+      results: points,
+      totalDistance: 0,
+    };
+  } else {
+    const results: number[][] = [];
+    const point = pushDis(points[0], distance);
+    results.push(point);
+
+    for (let i = 1; i < points.length - 1; i++) {
+      const subDistance = lineSegmentDistance(points[i - 1], points[i]);
+      distance += subDistance;
+
+      const mulPoint = pushDis(points[i], distance);
+      results.push(mulPoint);
+      results.push(mulPoint);
+    }
+    const pointDistance = lineSegmentDistance(
+      points[points.length - 2],
+      points[points.length - 1],
+    );
+    distance += pointDistance;
+
+    results.push(pushDis(points[points.length - 1], distance));
+    return {
+      results,
+      totalDistance: distance,
+    };
+  }
+}
+
+function getTileSimpleLineVertices(points: number[][]) {
+  if (points.length < 2) {
+    return {
+      results: points,
+    };
+  } else {
+    const results: number[][] = [];
+    const point = pushDis(points[0]);
+    results.push(point);
+
+    for (let i = 1; i < points.length - 1; i++) {
+      const mulPoint = pushDis(points[i]);
+      results.push(mulPoint);
+      results.push(mulPoint);
+    }
+    results.push(pushDis(points[points.length - 1]));
+    return {
+      results,
+    };
+  }
 }
 
 export function polygonTriangulation(feature: IEncodeFeature) {
@@ -200,7 +289,7 @@ export function polygonTriangulation(feature: IEncodeFeature) {
   };
 }
 
-// TODO：构建几何图形（带有中心点和大小）
+// 构建几何图形（带有中心点和大小）
 export function polygonTriangulationWithCenter(feature: IEncodeFeature) {
   const { coordinates } = feature;
   const flattengeo = earcut.flatten(coordinates as number[][][]);
@@ -349,7 +438,6 @@ export function HeatmapTriangulation(feature: IEncodeFeature) {
   if (coordinates.length === 2) {
     coordinates.push(0);
   }
-  const size = feature.size as number;
   const dir = addDir(-1, 1);
   const dir1 = addDir(1, 1);
   const dir2 = addDir(-1, -1);
@@ -389,7 +477,7 @@ function getGeometry(shape: ShapeType3D, needFlat = false): IExtrudeGeomety {
   return geometry;
 }
 
-function computeVertexNormals(
+export function computeVertexNormals(
   positions: number[],
   indexArray: number[],
   dim: number = 3,
@@ -446,7 +534,7 @@ function normalizeNormals(normals: Float32Array) {
   }
 }
 
-function checkIsClosed(points: number[][][]) {
+export function checkIsClosed(points: number[][][]) {
   const p1 = points[0][0];
   const p2 = points[0][points[0].length - 1];
   return p1[0] === p2[0] && p1[1] === p2[1];

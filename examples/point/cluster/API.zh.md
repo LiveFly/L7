@@ -1,1 +1,0 @@
-`markdown:docs/api/point_layer/cluster.zh.md`

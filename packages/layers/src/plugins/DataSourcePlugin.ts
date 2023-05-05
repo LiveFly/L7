@@ -1,11 +1,12 @@
 import {
+  IDebugLog,
   ILayer,
   ILayerPlugin,
-  ILngLat,
+  ILayerStage,
   IMapService,
   TYPES,
 } from '@antv/l7-core';
-import Source, { DEFAULT_DATA, DEFAULT_PARSER } from '@antv/l7-source';
+import Source from '@antv/l7-source';
 import { injectable } from 'inversify';
 import 'reflect-metadata';
 
@@ -14,30 +15,49 @@ export default class DataSourcePlugin implements ILayerPlugin {
   protected mapService: IMapService;
   public apply(layer: ILayer) {
     this.mapService = layer.getContainer().get<IMapService>(TYPES.IMapService);
-    layer.hooks.init.tap('DataSourcePlugin', () => {
-      const source = layer.getSource();
+    layer.hooks.init.tapPromise('DataSourcePlugin', async () => {
+      layer.log(IDebugLog.SourceInitStart, ILayerStage.INIT);
+      let source = layer.getSource();
       if (!source) {
-        // TODO: 允许用户不使用 layer 的 source 方法，在这里传入一个默认的替换的默认数据
-        const { data, options } = layer.sourceOption || {
-          data: DEFAULT_DATA,
-          options: DEFAULT_PARSER,
-        };
-        layer.setSource(new Source(data, options));
+        // Tip: 用户没有传入 source 的时候使用图层的默认数据
+        const { data, options } =
+          layer.sourceOption || layer.defaultSourceConfig;
+        source = new Source(data, options);
+        layer.setSource(source);
       }
-
-      this.updateClusterData(layer);
+      if (source.inited) {
+        this.updateClusterData(layer);
+        layer.log(IDebugLog.SourceInitEnd, ILayerStage.INIT);
+      } else {
+        await new Promise((resolve) => {
+          source.on('update', (e) => {
+            if (e.type === 'inited') {
+              this.updateClusterData(layer);
+              layer.log(IDebugLog.SourceInitEnd, ILayerStage.INIT);
+            }
+            resolve(null);
+          });
+        });
+      }
     });
 
     // 检测数据是否需要更新
-    layer.hooks.beforeRenderData.tap('DataSourcePlugin', () => {
+    layer.hooks.beforeRenderData.tapPromise('DataSourcePlugin', async () => {
       const neeUpdateCluster = this.updateClusterData(layer);
+
       const dataSourceNeedUpdate = layer.dataState.dataSourceNeedUpdate;
       layer.dataState.dataSourceNeedUpdate = false;
-      return neeUpdateCluster || dataSourceNeedUpdate;
+
+      const needScale = neeUpdateCluster || dataSourceNeedUpdate;
+      return needScale;
     });
   }
 
   private updateClusterData(layer: ILayer): boolean {
+    // Tip: 矢量瓦片不需要进行聚合操作
+    if (layer.isTileLayer || layer.tileLayer || !layer.getSource()) {
+      return false;
+    }
     const source = layer.getSource();
     const cluster = source.cluster;
     const { zoom = 0 } = source.clusterOptions;

@@ -1,7 +1,6 @@
 import { isNil } from 'lodash';
 import {
   IAttributeScale,
-  IScaleOption,
   IStyleAttribute,
   StyleScaleType,
 } from '../layer/IStyleAttributeService';
@@ -11,7 +10,6 @@ import {
   IEncodeFeature,
   IFeatureRange,
   IStyleAttributeInitializationOptions,
-  IStyleScale,
   IVertexAttributeDescriptor,
 } from './IStyleAttributeService';
 
@@ -80,6 +78,7 @@ export default class StyleAttribute implements IStyleAttribute {
       return this.scale?.defaultValues || [];
     }
     return params.map((param, idx) => {
+      // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
       const scaleFunc = this.scale?.scalers![idx].func;
       // @ts-ignore // TODO 支持双变量映射
       const value = scaleFunc(param);

@@ -5,14 +5,14 @@ import {
   IModel,
   ITexture2D,
 } from '@antv/l7-core';
-import { getMask, rgb2arr } from '@antv/l7-utils';
+import { rgb2arr } from '@antv/l7-utils';
 import { isNumber } from 'lodash';
 import BaseModel from '../../core/BaseModel';
 import { IPolygonLayerStyleOptions } from '../../core/interface';
 import { PolygonExtrudeTriangulation } from '../../core/triangulation';
 import polygonExtrudeFrag from '../shaders/extrude/polygon_extrude_frag.glsl';
-// extrude
 import polygonExtrudeVert from '../shaders/extrude/polygon_extrude_vert.glsl';
+// extrude
 import polygonExtrudeTexFrag from '../shaders/extrude/polygon_extrudetex_frag.glsl';
 // texture
 import polygonExtrudeTexVert from '../shaders/extrude/polygon_extrudetex_vert.glsl';
@@ -93,35 +93,25 @@ export default class ExtrudeModel extends BaseModel {
     };
   }
 
-  public initModels(): IModel[] {
+  public async initModels(): Promise<IModel[]> {
     this.loadTexture();
     return this.buildModels();
   }
 
-  public buildModels(): IModel[] {
-    const {
-      mask = false,
-      maskInside = true,
-    } = this.layer.getLayerConfig() as IPolygonLayerStyleOptions;
-
+  public async buildModels(): Promise<IModel[]> {
     const { frag, vert, type } = this.getShaders();
-
-    return [
-      this.layer.buildLayerModel({
-        moduleName: type,
-        vertexShader: vert,
-        fragmentShader: frag,
-        triangulation: PolygonExtrudeTriangulation,
-        stencil: getMask(mask, maskInside),
-      }),
-    ];
+    const model = await this.layer.buildLayerModel({
+      moduleName: type,
+      vertexShader: vert,
+      fragmentShader: frag,
+      triangulation: PolygonExtrudeTriangulation,
+    });
+    return [model];
   }
 
   public getShaders() {
-    const {
-      pickLight,
-      mapTexture,
-    } = this.layer.getLayerConfig() as IPolygonLayerStyleOptions;
+    const { pickLight, mapTexture } =
+      this.layer.getLayerConfig() as IPolygonLayerStyleOptions;
     if (mapTexture) {
       return {
         frag: polygonExtrudeTexFrag,
@@ -171,8 +161,6 @@ export default class ExtrudeModel extends BaseModel {
           feature: IEncodeFeature,
           featureIdx: number,
           vertex: number[],
-          attributeIdx: number,
-          normal: number[],
         ) => {
           const lng = vertex[0];
           const lat = vertex[1];
@@ -180,7 +168,6 @@ export default class ExtrudeModel extends BaseModel {
         },
       },
     });
-    // point layer size;
     this.styleAttributeService.registerStyleAttribute({
       name: 'normal',
       type: AttributeType.Attribute,
@@ -211,18 +198,12 @@ export default class ExtrudeModel extends BaseModel {
       descriptor: {
         name: 'a_Size',
         buffer: {
-          // give the WebGL driver a hint that this buffer may change
           usage: gl.DYNAMIC_DRAW,
           data: [],
           type: gl.FLOAT,
         },
         size: 1,
-        update: (
-          feature: IEncodeFeature,
-          featureIdx: number,
-          vertex: number[],
-          attributeIdx: number,
-        ) => {
+        update: (feature: IEncodeFeature) => {
           const { size = 10 } = feature;
           return Array.isArray(size) ? [size[0]] : [size as number];
         },
@@ -231,9 +212,8 @@ export default class ExtrudeModel extends BaseModel {
   }
 
   private loadTexture() {
-    const {
-      mapTexture,
-    } = this.layer.getLayerConfig() as IPolygonLayerStyleOptions;
+    const { mapTexture } =
+      this.layer.getLayerConfig() as IPolygonLayerStyleOptions;
 
     const { createTexture2D } = this.rendererService;
     this.texture = createTexture2D({
@@ -255,8 +235,7 @@ export default class ExtrudeModel extends BaseModel {
           min: gl.LINEAR,
           mag: gl.LINEAR,
         });
-        this.layerService.updateLayerRenderList();
-        this.layerService.renderLayers();
+        this.layerService.reRender();
       };
     }
   }
