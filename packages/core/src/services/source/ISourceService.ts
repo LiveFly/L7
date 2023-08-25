@@ -1,4 +1,4 @@
-import { RequestParameters, TilesetManager } from '@antv/l7-utils';
+import { RequestParameters, SourceTile, TilesetManager } from '@antv/l7-utils';
 import { BBox } from '@turf/helpers';
 export type DataType = string | object[] | object;
 export type SourceEventType = 'inited' | 'sourceUpdate' | 'update';
@@ -150,6 +150,16 @@ export interface ISource {
   getFeatureId(field: string, value: any): number | undefined;
   getParserType(): string;
   getClusters(zoom: number): any;
+  // 瓦片图层
+  reloadAllTile(): void;
+  reloadTilebyId(z: number, x: number, y: number): void;
+  reloadTileByLnglat(lng: number, lat: number, z: number): void;
+  reloadTileByExtent(bounds: [number, number, number, number], z: number): void;
+  getTileExtent(
+    extent: [number, number, number, number],
+    zoom: number,
+  ): Array<{ x: number; y: number; z: number }> | undefined;
+  getTileByZXY(z: number, x: number, y: number): SourceTile | undefined;
   getClustersLeaves(id: number): any;
   updateFeaturePropertiesById(
     id: number,

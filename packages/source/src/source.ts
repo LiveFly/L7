@@ -14,6 +14,7 @@ import {
   bBoxToBounds,
   extent,
   padBounds,
+  SourceTile,
   TilesetManager,
 } from '@antv/l7-utils';
 import { BBox } from '@turf/helpers';
@@ -208,6 +209,36 @@ export default class Source extends EventEmitter implements ISource {
     });
   }
 
+  public reloadAllTile() {
+    this.tileset?.reloadAll();
+  }
+
+  public reloadTilebyId(z: number, x: number, y: number): void {
+    this.tileset?.reloadTileById(z, x, y);
+  }
+
+  public reloadTileByLnglat(lng: number, lat: number, z: number): void {
+    this.tileset?.reloadTileByLnglat(lng, lat, z);
+  }
+
+  public getTileExtent(
+    e: [number, number, number, number],
+    zoom: number,
+  ): Array<{ x: number; y: number; z: number }> | undefined {
+    return this.tileset?.getTileExtent(e, zoom);
+  }
+
+  public getTileByZXY(z: number, x: number, y: number): SourceTile | undefined {
+    return this.tileset?.getTileByZXY(z, x, y);
+  }
+
+  public reloadTileByExtent(
+    bounds: [number, number, number, number],
+    z: number,
+  ): void {
+    this.tileset?.reloadTileByExtent(bounds, z);
+  }
+
   public destroy() {
     this.removeAllListeners();
     this.originData = null;
@@ -262,17 +293,10 @@ export default class Source extends EventEmitter implements ISource {
    */
   private excuteParser(): void {
     // 耗时计算测试
-    // let t = new Date().getTime();
-    // let c = 0
-    // while(c < 100000000) {
-    //   c++
-    // }
-    // console.log('t', new Date().getTime() - t)
     const parser = this.parser as IParserCfg;
     const type: string = parser.type || 'geojson';
     const sourceParser = getParser(type);
     this.data = sourceParser(this.originData, parser);
-
     // 为瓦片图层的父图层创建数据瓦片金字塔管理器
     this.tileset = this.initTileset();
 

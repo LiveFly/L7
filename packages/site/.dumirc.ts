@@ -135,20 +135,6 @@ export default defineConfig({
           'https://gw.alipayobjects.com/mdn/rms_08cc33/afts/img/A*OnGVRb_qWxcAAAAAAAAAAAAAARQnAQ',
       },
     ],
-    news: [
-      {
-        type: {
-          zh: '发布',
-          en: 'publish',
-        },
-        title: {
-          zh: 'L7 从矢量到遥感，从引擎到平台，探索地理分析的远方',
-          en: 'From vector to remote sensing, from engine to platform, explore the distance of geographical analysis',
-        },
-        date: '2022.11.22',
-        link: 'https://www.yuque.com/antv/blog/zrz77eat2m4wb7yk',
-      },
-    ],
     navs: [
       {
         slug: 'docs/tutorial/l7',
@@ -174,11 +160,20 @@ export default defineConfig({
         },
       },
       {
-        slug: 'custom/tools',
         title: {
           zh: '地图工具',
           en: 'tools',
         },
+        dropdownItems: [
+          {
+            name: { zh: '行政区划数据', en: 'Administrative Division Data' },
+            url: '/custom/tools',
+          },
+          {
+            name: { zh: 'GeoJSON 编辑工具', en: 'Administrative Division Data' },
+            url: '/custom/l7editor',
+          },
+        ],
       },
     ],
     cases: [
@@ -237,8 +232,8 @@ export default defineConfig({
       },
       {
         name: {
-          zh: 'LocationInsight',
-          en: 'LocationInsight',
+          zh: 'L7VP',
+          en: 'L7VP',
         },
         url: 'https://li.antv.antgroup.com/#/home',
       },
@@ -324,10 +319,10 @@ export default defineConfig({
         order: 11,
       },
       {
-        slug: 'tutorial/debug',
+        slug: 'tutorial/monitor',
         title: {
-          zh: '调试 debug',
-          en: 'debug',
+          zh: '监控打点',
+          en: 'Monitor',
         },
         order: 12,
       },
@@ -556,6 +551,15 @@ export default defineConfig({
           en: 'Layer Mask🌟 ',
         },
         order: 7,
+      },
+      {
+        slug: 'composite-layers',
+        icon: 'map',
+        title: {
+          zh: '复合图层',
+          en: 'CompositeLayers',
+        },
+        order: 8,
       },
       {
         slug: 'component',

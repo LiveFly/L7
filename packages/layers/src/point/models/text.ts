@@ -7,8 +7,13 @@ import {
   IModelUniform,
   ITexture2D,
 } from '@antv/l7-core';
-import { boundsContains, calculateCentroid, padBounds } from '@antv/l7-utils';
-import { isEqual, isNumber } from 'lodash';
+import {
+  boundsContains,
+  calculateCentroid,
+  padBounds,
+  rgb2arr,
+} from '@antv/l7-utils';
+import { isEqual } from 'lodash';
 import BaseModel from '../../core/BaseModel';
 import { IPointLayerStyleOptions } from '../../core/interface';
 import CollisionIndex from '../../utils/collision-index';
@@ -20,7 +25,7 @@ import {
 import textFrag from '../shaders/text_frag.glsl';
 import textVert from '../shaders/text_vert.glsl';
 
-export function TextTriangulation(feature: IEncodeFeature) {
+export function TextTrianglation(feature: IEncodeFeature) {
   // @ts-ignore
   const that = this as TextModel;
   const id = feature.id as number;
@@ -87,6 +92,7 @@ export default class TextModel extends BaseModel {
       centroid: number[];
     };
   } = {};
+  private rawEncodeData: IEncodeFeature[];
   private texture: ITexture2D;
   private currentZoom: number = -1;
   private extent: [[number, number], [number, number]];
@@ -95,7 +101,6 @@ export default class TextModel extends BaseModel {
   private preTextStyle: Partial<IPointLayerStyleOptions> = {};
   public getUninforms(): IModelUniform {
     const {
-      opacity = 1.0,
       stroke = '#fff',
       strokeWidth = 0,
       halo = 0.5,
@@ -110,62 +115,15 @@ export default class TextModel extends BaseModel {
     }
 
     this.preTextStyle = this.getTextStyle();
-
-    if (
-      this.dataTextureTest &&
-      this.dataTextureNeedUpdate({
-        opacity,
-        strokeWidth,
-        stroke,
-      })
-    ) {
-      this.judgeStyleAttributes({
-        opacity,
-        strokeWidth,
-        stroke,
-      });
-
-      const encodeData = this.layer.getEncodedData();
-      const { data, width, height } = this.calDataFrame(
-        this.cellLength,
-        encodeData,
-        this.cellProperties,
-      );
-      this.rowCount = height; // 当前数据纹理有多少行
-
-      this.dataTexture =
-        this.cellLength > 0 && data.length > 0
-          ? this.createTexture2D({
-              flipY: true,
-              data,
-              format: gl.LUMINANCE,
-              type: gl.FLOAT,
-              width,
-              height,
-            })
-          : this.createTexture2D({
-              flipY: true,
-              data: [1],
-              format: gl.LUMINANCE,
-              type: gl.FLOAT,
-              width: 1,
-              height: 1,
-            });
-    }
-
     return {
-      u_dataTexture: this.dataTexture, // 数据纹理 - 有数据映射的时候纹理中带数据，若没有任何数据映射时纹理是 [1]
-      u_cellTypeLayout: this.getCellTypeLayout(),
       u_raisingHeight: Number(raisingHeight),
-
-      u_opacity: isNumber(opacity) ? opacity : 1.0,
-      u_stroke_width: isNumber(strokeWidth) ? strokeWidth : 1.0,
-      u_stroke_color: this.getStrokeColor(stroke),
-
+      u_stroke_width: strokeWidth,
+      u_stroke_color: rgb2arr(stroke),
       u_sdf_map: this.texture,
       u_halo_blur: halo,
       u_gamma_scale: gamma,
       u_sdf_map_size: [canvas?.width || 1, canvas?.height || 1],
+      ...this.getStyleAttribute(),
     };
   }
 
@@ -173,6 +131,7 @@ export default class TextModel extends BaseModel {
     // 绑定事件
     this.bindEvent();
     this.extent = this.textExtent();
+    this.rawEncodeData = this.layer.getEncodedData();
     this.preTextStyle = this.getTextStyle();
     return this.buildModels();
   }
@@ -191,7 +150,8 @@ export default class TextModel extends BaseModel {
       moduleName: 'pointText',
       vertexShader: textVert,
       fragmentShader: textFrag,
-      triangulation: TextTriangulation.bind(this),
+      inject: this.getInject(),
+      triangulation: TextTrianglation.bind(this),
       depth: { enable: false },
     });
     return [model];
@@ -221,15 +181,6 @@ export default class TextModel extends BaseModel {
       await this.mapping();
       return true;
     }
-
-    // if (
-    //   JSON.stringify(textOffset) !==
-    //     JSON.stringify(this.preTextStyle.textOffset) ||
-    //   textAnchor !== this.preTextStyle.textAnchor
-    // ) {
-    //   await this.mapping();
-    //   return true;
-    // }
     if (textAllowOverlap) {
       // 小于不做避让
       return false;
@@ -255,7 +206,6 @@ export default class TextModel extends BaseModel {
 
   public clearModels() {
     this.texture?.destroy();
-    this.dataTexture?.destroy();
     // TODO this.mapping
     this.layer.off('remapping', this.mapping);
   }
@@ -282,7 +232,7 @@ export default class TextModel extends BaseModel {
       name: 'textOffsets',
       type: AttributeType.Attribute,
       descriptor: {
-        name: 'a_textOffsets',
+        name: 'a_textOffsets', // 文字偏移量
         buffer: {
           // give the WebGL driver a hint that this buffer may change
           usage: gl.STATIC_DRAW,
@@ -364,7 +314,7 @@ export default class TextModel extends BaseModel {
    */
   private initTextFont() {
     const { fontWeight, fontFamily } = this.getTextStyle();
-    const data = this.layer.getEncodedData();
+    const data = this.rawEncodeData;
     const characterSet: string[] = [];
     data.forEach((item: IEncodeFeature) => {
       let { shape = '' } = item;
@@ -389,7 +339,7 @@ export default class TextModel extends BaseModel {
    */
   private initIconFontTex() {
     const { fontWeight, fontFamily } = this.getTextStyle();
-    const data = this.layer.getEncodedData();
+    const data = this.rawEncodeData;
     const characterSet: string[] = [];
     data.forEach((item: IEncodeFeature) => {
       let { shape = '' } = item;
@@ -443,23 +393,29 @@ export default class TextModel extends BaseModel {
       textAnchor = 'center',
       textOffset,
     } = this.layer.getLayerConfig() as IPointLayerStyleOptions;
-    const data = this.layer.getEncodedData();
-
+    const data = this.rawEncodeData;
     this.glyphInfo = data.map((feature: IEncodeFeature) => {
       const { shape = '', id, size = 1 } = feature;
+      const offset = feature.textOffset
+        ? feature.textOffset
+        : textOffset || [0, 0];
+      const anchor = feature.textAnchor
+        ? feature.textAnchor
+        : textAnchor || 'center';
 
       const shaping = shapeText(
         shape.toString(),
         mapping,
         // @ts-ignore
         size,
-        textAnchor,
+        anchor,
         'left',
         spacing,
-        textOffset || feature.textOffset || [0, 0],
+        offset, //
         iconfont,
       );
-      const glyphQuads = getGlyphQuads(shaping, textOffset, false);
+
+      const glyphQuads = getGlyphQuads(shaping, offset, false);
       feature.shaping = shaping;
       feature.glyphQuads = glyphQuads;
       // feature.centroid = calculteCentroid(coordinates);
@@ -577,7 +533,8 @@ export default class TextModel extends BaseModel {
       moduleName: 'pointText',
       vertexShader: textVert,
       fragmentShader: textFrag,
-      triangulation: TextTriangulation.bind(this),
+      triangulation: TextTrianglation.bind(this),
+      inject: this.getInject(),
       depth: { enable: false },
     });
     // TODO 渲染流程待修改

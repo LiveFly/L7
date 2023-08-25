@@ -8,17 +8,27 @@ import {
   UPDATE_TILE_STRATEGIES,
 } from './const';
 import { SourceTile } from './tile';
-import { TilesetManagerOptions, UpdateTileStrategy } from './types';
+import { TileBounds, TilesetManagerOptions, UpdateTileStrategy } from './types';
 import {
   getLatLonBoundsBuffer,
   isLatLonBoundsContains,
 } from './utils/bound-buffer';
 import { getTileIndices, osmLonLat2TileXY } from './utils/lonlat-tile';
 
+export enum TileEventType {
+  TilesLoadStart = 'tiles-load-start',
+  TileLoaded = 'tile-loaded',
+  TileError = 'tile-error',
+  TileUnload = 'tile-unload',
+  TileUpdate = 'tile-update',
+  TilesLoadFinished = 'tiles-load-finished',
+}
+
 /**
  * 管理瓦片数据
  */
 export class TilesetManager extends EventEmitter {
+  public currentZoom?: number;
   public get isLoaded() {
     return this.currentTiles.every((tile) => tile.isDone);
   }
@@ -81,6 +91,7 @@ export class TilesetManager extends EventEmitter {
   public update(zoom: number, latLonBounds: [number, number, number, number]) {
     // 校验层级，向上取整
     const verifyZoom = Math.max(0, Math.ceil(zoom));
+
     if (
       this.lastViewStates &&
       this.lastViewStates.zoom === verifyZoom &&
@@ -104,6 +115,7 @@ export class TilesetManager extends EventEmitter {
       latLonBoundsBuffer,
     };
 
+    this.currentZoom = verifyZoom;
     let isAddTile = false;
     const tileIndices = this.getTileIndices(
       verifyZoom,
@@ -114,6 +126,7 @@ export class TilesetManager extends EventEmitter {
         this.options.warp || (tile.x >= 0 && tile.x < Math.pow(2, verifyZoom))
       );
     });
+    this.emit(TileEventType.TilesLoadStart);
     this.currentTiles = tileIndices.map(({ x, y, z }) => {
       let tile = this.getTile(x, y, z);
       if (tile) {
@@ -159,6 +172,32 @@ export class TilesetManager extends EventEmitter {
     }
   }
 
+  public reloadTileById(z: number, x: number, y: number) {
+    const tile = this.cacheTiles.get(`${x},${y},${z}`);
+    if (tile) {
+      this.onTileUnload(tile);
+      tile.loadData({
+        getData: this.options.getTileData,
+        onLoad: this.onTileLoad,
+        onError: this.onTileError,
+      });
+    }
+  }
+
+  public reloadTileByLnglat(lng: number, lat: number, z: number) {
+    const tile = this.getTileByLngLat(lng, lat, z);
+    if (tile) {
+      this.reloadTileById(tile.z, tile.x, tile.y);
+    }
+  }
+
+  public reloadTileByExtent(extent: TileBounds, z: number) {
+    const tiles = this.getTileIndices(z, extent);
+    tiles.forEach((tile) => {
+      this.reloadTileById(tile.z, tile.x, tile.y);
+    });
+  }
+
   // 取消滞留请求中的瓦片
   public pruneRequests() {
     const abortCandidates: SourceTile[] = [];
@@ -183,6 +222,15 @@ export class TilesetManager extends EventEmitter {
     const xy = osmLonLat2TileXY(lng, lat, z);
     const tiles = this.tiles.filter((t) => t.key === `${xy[0]}_${xy[1]}_${z}`);
     return tiles[0];
+  }
+
+  public getTileExtent(extent: TileBounds, zoom: number) {
+    return this.getTileIndices(zoom, extent);
+  }
+
+  public getTileByZXY(z: number, x: number, y: number) {
+    const tile = this.tiles.filter((t) => t.key === `${x}_${y}_${z}`);
+    return tile[0];
   }
 
   // 摧毁
@@ -242,7 +290,7 @@ export class TilesetManager extends EventEmitter {
     });
 
     if (isVisibleChange) {
-      this.emit('tile-update');
+      this.emit(TileEventType.TileUpdate);
     }
   }
 
@@ -270,25 +318,37 @@ export class TilesetManager extends EventEmitter {
 
   // 瓦片加载成功回调
   private onTileLoad = (tile: SourceTile) => {
-    this.emit('tile-loaded', tile);
+    this.emit(TileEventType.TileLoaded, tile);
     this.updateTileVisible();
+    this.loadFinished();
   };
 
   // 瓦片加载失败回调
   private onTileError = (error: Error, tile: SourceTile) => {
-    this.emit('tile-error', { error, tile });
+    this.emit(TileEventType.TileError, { error, tile });
     this.updateTileVisible();
+    this.loadFinished();
   };
 
   // 瓦片被删除回调
   private onTileUnload = (tile: SourceTile) => {
-    this.emit('tile-unload', tile);
+    this.emit(TileEventType.TileUnload, tile);
+    this.loadFinished();
   };
 
   // 获取瓦片 ID
   private getTileId(x: number, y: number, z: number) {
     const tileId = `${x},${y},${z}`;
     return tileId;
+  }
+
+  private loadFinished() {
+    const finish = !this.currentTiles.some((t: SourceTile) => !t.isDone);
+    if (finish) {
+      this.emit(TileEventType.TilesLoadFinished);
+    }
+
+    return finish;
   }
 
   // 获取瓦片
