@@ -1,10 +1,11 @@
 import BaseLayer from '../core/BaseLayer';
-import { IMaskLayerStyleOptions } from '../core/interface';
+import type { IMaskLayerStyleOptions } from '../core/interface';
 
-import MaskModels, { MaskModelType } from './models';
+import type { MaskModelType } from './models';
+import MaskModels from './models';
 export default class MaskLayer extends BaseLayer<IMaskLayerStyleOptions> {
   public type: string = 'MaskLayer';
-  public defaultSourceConfig: {
+  public declare defaultSourceConfig: {
     data: [];
     options: {
       parser: {

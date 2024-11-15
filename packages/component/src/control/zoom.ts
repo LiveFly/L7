@@ -1,7 +1,8 @@
 import { PositionType } from '@antv/l7-core';
 import { DOM } from '@antv/l7-utils';
 import { createL7Icon } from '../utils/icon';
-import { Control, IControlOption } from './baseControl';
+import type { IControlOption } from './baseControl';
+import { Control } from './baseControl';
 
 export interface IZoomControlOption extends IControlOption {
   zoomInText: DOM.ELType | string;
@@ -72,19 +73,13 @@ export default class Zoom extends Control<IZoomControlOption> {
   }
 
   public zoomIn = () => {
-    if (
-      !this.disabled &&
-      this.mapsService.getZoom() < this.mapsService.getMaxZoom()
-    ) {
+    if (!this.disabled && this.mapsService.getZoom() < this.mapsService.getMaxZoom()) {
       this.mapsService.zoomIn();
     }
   };
 
   public zoomOut = () => {
-    if (
-      !this.disabled &&
-      this.mapsService.getZoom() > this.mapsService.getMinZoom()
-    ) {
+    if (!this.disabled && this.mapsService.getZoom() > this.mapsService.getMinZoom()) {
       this.mapsService.zoomOut();
     }
   };

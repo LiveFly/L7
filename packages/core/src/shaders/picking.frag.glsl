@@ -1,10 +1,7 @@
-varying vec4 v_PickingResult;
-uniform vec4 u_HighlightColor : [0, 0, 0, 0];
-uniform vec4 u_SelectColor : [0, 0, 0, 0];
-uniform float u_PickingStage : 0.0;
-uniform float u_shaderPick;
 
-uniform float u_activeMix: 0;
+in vec4 v_PickingResult;
+
+#pragma include "picking_uniforms"
 
 #define PICKING_NONE 0.0
 #define PICKING_ENCODE 1.0
@@ -18,26 +15,20 @@ uniform float u_activeMix: 0;
  * Returns highlight color if this item is selected.
  */
 vec4 filterHighlightColor(vec4 color, float weight) {
-  // float selected = v_PickingResult.a;
-  bool selected = bool(v_PickingResult.a);
-
-  // if (selected == SELECT) {
-  if (selected) {
-  //   // 点击选中状态
-  //   vec4 selectColor = u_SelectColor * COLOR_SCALE;
-  //   return selectColor;
-  // } else if (selected == HIGHLIGHT) {
-  //   // hover 高亮状态
-    vec4 highLightColor = u_HighlightColor * COLOR_SCALE;
-
+  float activeType = v_PickingResult.a;
+  if(activeType > 0.0) {
+    vec4 highLightColor =  activeType > 1.5 ? u_SelectColor : u_HighlightColor;
+    highLightColor = highLightColor * COLOR_SCALE;
     float highLightAlpha = highLightColor.a;
     float highLightRatio = highLightAlpha / (highLightAlpha + color.a * (1.0 - highLightAlpha));
-
     vec3 resultRGB = mix(color.rgb, highLightColor.rgb, highLightRatio);
     return vec4(mix(resultRGB * weight, color.rgb, u_activeMix), color.a);
-  } else {
+  }
+  else {
     return color;
   }
+
+  
 }
 
 /*

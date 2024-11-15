@@ -1,12 +1,8 @@
-import { IMapService, IRendererService } from '@antv/l7-core';
-import { DOM, SourceTile } from '@antv/l7-utils';
+import type { IMapService, IRendererService } from '@antv/l7-core';
+import type { SourceTile } from '@antv/l7-utils';
+import { DOM } from '@antv/l7-utils';
 
-export function readRasterValue(
-  tile: SourceTile,
-  mapService: IMapService,
-  x: number,
-  y: number,
-) {
+export function readRasterValue(tile: SourceTile, mapService: IMapService, x: number, y: number) {
   const bbox = tile?.bboxPolygon?.bbox || [0, 0, 10, -10];
 
   const [minLng = 0, minLat = 0, maxLng = 10, maxLat = -10] = bbox;
@@ -33,19 +29,11 @@ export function readRasterValue(
   return data;
 }
 
-export function readPixel(
-  x: number,
-  y: number,
-  rendererService: IRendererService,
-) {
-  const { readPixels, getContainer } = rendererService;
+export function readPixel(x: number, y: number, rendererService: IRendererService) {
+  const { readPixels, getViewportSize } = rendererService;
   const xInDevicePixel = x * DOM.DPR;
   const yInDevicePixel = y * DOM.DPR;
-  let { width, height } = getContainerSize(
-    getContainer() as HTMLCanvasElement | HTMLElement,
-  );
-  width *= DOM.DPR;
-  height *= DOM.DPR;
+  const { width, height } = getViewportSize();
   if (
     xInDevicePixel > width - 1 * DOM.DPR ||
     xInDevicePixel < 0 ||
@@ -64,15 +52,4 @@ export function readPixel(
     data: new Uint8Array(1 * 1 * 4),
   });
   return pickedColors;
-}
-
-function getContainerSize(container: HTMLCanvasElement | HTMLElement) {
-  if ((container as HTMLCanvasElement).getContext) {
-    return {
-      width: (container as HTMLCanvasElement).width / DOM.DPR,
-      height: (container as HTMLCanvasElement).height / DOM.DPR,
-    };
-  } else {
-    return container.getBoundingClientRect();
-  }
 }

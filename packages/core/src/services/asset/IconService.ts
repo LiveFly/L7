@@ -1,15 +1,12 @@
-import { $window } from '@antv/l7-utils';
 import { EventEmitter } from 'eventemitter3';
-import { injectable } from 'inversify';
-import 'reflect-metadata';
 import { buildIconMaping } from '../../utils/font_util';
-import { ITexture2D } from '../renderer/ITexture2D';
-import { ISceneService } from '../scene/ISceneService';
-import { IIcon, IICONMap, IIconService, IImage } from './IIconService';
+import type { ITexture2D } from '../renderer/ITexture2D';
+import type { ISceneService } from '../scene/ISceneService';
+import type { IIcon, IICONMap, IIconService, IImage } from './IIconService';
 const BUFFER = 3;
 const MAX_CANVAS_WIDTH = 1024;
 const imageSize = 64;
-@injectable()
+
 export default class IconService extends EventEmitter implements IIconService {
   public canvasHeight: number = 128;
   private texture: ITexture2D;
@@ -25,7 +22,7 @@ export default class IconService extends EventEmitter implements IIconService {
   public init() {
     this.iconData = [];
     this.iconMap = {};
-    this.canvas = $window.document.createElement('canvas');
+    this.canvas = window.document.createElement('canvas');
     this.canvas.width = 128;
     this.canvas.height = 128;
     this.ctx = this.canvas.getContext('2d') as CanvasRenderingContext2D;
@@ -174,11 +171,7 @@ export default class IconService extends EventEmitter implements IIconService {
    * 计算 icon 在画布上的排布（是否需要换行）
    */
   private updateIconMap() {
-    const { mapping, canvasHeight } = buildIconMaping(
-      this.iconData,
-      BUFFER,
-      MAX_CANVAS_WIDTH,
-    );
+    const { mapping, canvasHeight } = buildIconMaping(this.iconData, BUFFER, MAX_CANVAS_WIDTH);
     this.iconMap = mapping;
     this.canvasHeight = canvasHeight;
   }

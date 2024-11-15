@@ -1,10 +1,9 @@
-import { $window, LRUCache } from '@antv/l7-utils';
+import { LRUCache } from '@antv/l7-utils';
+// @ts-ignore
+import TinySDF from '@mapbox/tiny-sdf';
 import { EventEmitter } from 'eventemitter3';
-import { injectable } from 'inversify';
-import TinySDF from 'l7-tiny-sdf';
-import 'reflect-metadata';
 import { buildMapping } from '../../utils/font_util';
-import {
+import type {
   IFontAtlas,
   IFontMapping,
   IFontOptions,
@@ -60,7 +59,6 @@ function populateAlphaChannel(alphaChannel: number[], imageData: ImageData) {
   }
 }
 
-@injectable()
 export default class FontService extends EventEmitter implements IFontService {
   public get scale() {
     return HEIGHT_SCALE;
@@ -157,11 +155,7 @@ export default class FontService extends EventEmitter implements IFontService {
       return;
     }
     // update fontAtlas with new settings
-    const fontAtlas = this.generateFontAtlas(
-      this.key,
-      charSet,
-      cachedFontAtlas,
-    );
+    const fontAtlas = this.generateFontAtlas(this.key, charSet, cachedFontAtlas);
     this.fontAtlas = fontAtlas;
 
     // update cache
@@ -211,19 +205,11 @@ export default class FontService extends EventEmitter implements IFontService {
     characterSet: string[],
     cachedFontAtlas: IFontAtlas,
   ): IFontAtlas {
-    const {
-      fontFamily,
-      fontWeight,
-      fontSize,
-      buffer,
-      sdf,
-      radius,
-      cutoff,
-      iconfont,
-    } = this.fontOptions;
+    const { fontFamily, fontWeight, fontSize, buffer, sdf, radius, cutoff, iconfont } =
+      this.fontOptions;
     let canvas = cachedFontAtlas && cachedFontAtlas.data;
     if (!canvas) {
-      canvas = $window.document.createElement('canvas');
+      canvas = window.document.createElement('canvas');
       canvas.width = MAX_CANVAS_WIDTH;
     }
     const ctx = canvas.getContext('2d', {
@@ -255,14 +241,7 @@ export default class FontService extends EventEmitter implements IFontService {
 
     // 3. layout characters
     if (sdf) {
-      const tinySDF = new TinySDF(
-        fontSize,
-        buffer,
-        radius,
-        cutoff,
-        fontFamily,
-        fontWeight,
-      );
+      const tinySDF = new TinySDF(fontSize, buffer, radius, cutoff, fontFamily, fontWeight);
       // used to store distance values from tinySDF
       // tinySDF.size equals `fontSize + buffer * 2`
       const imageData = ctx.getImageData(0, 0, tinySDF.size, tinySDF.size);
@@ -273,9 +252,7 @@ export default class FontService extends EventEmitter implements IFontService {
           //   '("' + char.replace('&#x', '\\u').replace(';', '') + '")',
           // );
 
-          const icon = String.fromCharCode(
-            parseInt(char.replace('&#x', '').replace(';', ''), 16),
-          );
+          const icon = String.fromCharCode(parseInt(char.replace('&#x', '').replace(';', ''), 16));
           const iconData = tinySDF.draw(icon);
           populateAlphaChannel(iconData, imageData);
         } else {
@@ -288,11 +265,7 @@ export default class FontService extends EventEmitter implements IFontService {
       }
     } else {
       for (const char of characterSet) {
-        ctx.fillText(
-          char,
-          mapping[char].x,
-          mapping[char].y + fontSize * BASELINE_SCALE,
-        );
+        ctx.fillText(char, mapping[char].x, mapping[char].y + fontSize * BASELINE_SCALE);
       }
     }
 

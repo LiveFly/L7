@@ -1,5 +1,6 @@
 import { DOM } from '@antv/l7-utils';
-import { Control, IControlOption, PositionType } from './baseControl';
+import type { IControlOption } from './baseControl';
+import { Control, PositionType } from './baseControl';
 
 export interface ILogoControlOption extends IControlOption {
   // Logo 展示的图片 url
@@ -45,10 +46,7 @@ export default class Logo extends Control<ILogoControlOption> {
     imgDOM.setAttribute('aria-label', 'AntV logo');
     DOM.setUnDraggable(imgDOM);
     if (href) {
-      const anchorDOM = DOM.create(
-        'a',
-        'l7-control-logo-link',
-      ) as HTMLLinkElement;
+      const anchorDOM = DOM.create('a', 'l7-control-logo-link') as HTMLLinkElement;
       anchorDOM.target = '_blank';
       anchorDOM.href = href;
       anchorDOM.rel = 'noopener nofollow';

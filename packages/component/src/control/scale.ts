@@ -1,5 +1,6 @@
 import { DOM, lnglatDistance } from '@antv/l7-utils';
-import { Control, IControlOption, PositionType } from './baseControl';
+import type { IControlOption } from './baseControl';
+import { Control, PositionType } from './baseControl';
 
 export interface IScaleControlOption extends IControlOption {
   lockWidth: boolean;
@@ -40,10 +41,7 @@ export default class Scale extends Control<IScaleControlOption> {
 
   public onRemove() {
     const { updateWhenIdle } = this.controlOption;
-    this.mapsService.off(
-      updateWhenIdle ? 'zoomend' : 'zoomchange',
-      this.update,
-    );
+    this.mapsService.off(updateWhenIdle ? 'zoomend' : 'zoomchange', this.update);
     this.mapsService.off(updateWhenIdle ? 'moveend' : 'mapmove', this.update);
   }
 

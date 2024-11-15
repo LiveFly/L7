@@ -1,38 +1,26 @@
-import {
-  IDebugLog,
+import type {
   IEncodeFeature,
   IFontService,
   ILayer,
   ILayerPlugin,
-  ILayerStage,
   IMapService,
   IParseDataItem,
   IStyleAttribute,
   IStyleAttributeService,
+  L7Container,
   Position,
-  TYPES,
 } from '@antv/l7-core';
-import { Version } from '@antv/l7-maps';
+import { IDebugLog, ILayerStage } from '@antv/l7-core';
 import { normalize, rgb2arr } from '@antv/l7-utils';
-import { inject, injectable } from 'inversify';
-import { cloneDeep } from 'lodash';
-import 'reflect-metadata';
-import { ILineLayerStyleOptions } from '../core/interface';
 
-@injectable()
 export default class DataMappingPlugin implements ILayerPlugin {
-  @inject(TYPES.IMapService)
-  private readonly mapService: IMapService;
+  private mapService: IMapService;
+  private fontService: IFontService;
 
-  @inject(TYPES.IFontService)
-  private readonly fontService: IFontService;
+  public apply(layer: ILayer, { styleAttributeService, mapService, fontService }: L7Container) {
+    this.mapService = mapService;
+    this.fontService = fontService;
 
-  public apply(
-    layer: ILayer,
-    {
-      styleAttributeService,
-    }: { styleAttributeService: IStyleAttributeService },
-  ) {
     layer.hooks.init.tapPromise('DataMappingPlugin', async () => {
       layer.log(IDebugLog.MappingStart, ILayerStage.INIT);
       // 初始化重新生成 map
@@ -40,22 +28,19 @@ export default class DataMappingPlugin implements ILayerPlugin {
       layer.log(IDebugLog.MappingEnd, ILayerStage.INIT);
     });
 
-    layer.hooks.beforeRenderData.tapPromise(
-      'DataMappingPlugin',
-      async (flag: boolean) => {
-        if (!flag) {
-          return flag;
-        }
+    layer.hooks.beforeRenderData.tapPromise('DataMappingPlugin', async (flag: boolean) => {
+      if (!flag) {
+        return flag;
+      }
 
-        layer.dataState.dataMappingNeedUpdate = false;
-        layer.log(IDebugLog.MappingStart, ILayerStage.UPDATE);
-        const mappingResult = this.generateMaping(layer, {
-          styleAttributeService,
-        });
-        layer.log(IDebugLog.MappingEnd, ILayerStage.UPDATE);
-        return mappingResult;
-      },
-    );
+      layer.dataState.dataMappingNeedUpdate = false;
+      layer.log(IDebugLog.MappingStart, ILayerStage.UPDATE);
+      const mappingResult = this.generateMaping(layer, {
+        styleAttributeService,
+      });
+      layer.log(IDebugLog.MappingEnd, ILayerStage.UPDATE);
+      return mappingResult;
+    });
 
     // remapping before render
     layer.hooks.beforeRender.tap('DataMappingPlugin', () => {
@@ -97,9 +82,7 @@ export default class DataMappingPlugin implements ILayerPlugin {
   }
   private generateMaping(
     layer: ILayer,
-    {
-      styleAttributeService,
-    }: { styleAttributeService: IStyleAttributeService },
+    { styleAttributeService }: { styleAttributeService: IStyleAttributeService },
   ) {
     const attributes = styleAttributeService.getLayerStyleAttributes() || [];
     const filter = styleAttributeService.getLayerStyleAttribute('filter');
@@ -120,9 +103,6 @@ export default class DataMappingPlugin implements ILayerPlugin {
 
     layer.setEncodedData(encodeData);
 
-    if (dataArray.length === 0 && layer.encodeDataLength === 0) {
-      return false;
-    }
     // 对外暴露事件
     layer.emit('dataUpdate', null);
     return true;
@@ -134,13 +114,6 @@ export default class DataMappingPlugin implements ILayerPlugin {
     data: IParseDataItem[],
     predata?: IEncodeFeature[],
   ): IEncodeFeature[] {
-    const {
-      // TODO 单独的数据处理不应在此处
-      arrow = {
-        enable: false,
-      },
-    } = layer.getLayerConfig() as ILineLayerStyleOptions;
-
     const usedAttributes = attributes
       .filter((attribute) => attribute.scale !== undefined)
       .filter((attribute) => attribute.name !== 'filter');
@@ -171,64 +144,20 @@ export default class DataMappingPlugin implements ILayerPlugin {
           );
         }
       });
-
-      if (arrow.enable && encodeRecord.shape === 'line') {
-        // 只有在线图层且支持配置箭头的时候进行插入顶点的处理
-        const coords = encodeRecord.coordinates as Position[];
-        // @ts-ignore
-        if (layer.arrowInsertCount < layer.encodeDataLength) {
-          // Tip: arrowInsert 的判断用于确保每一条线数据 arrow 的属性点只会被植入一次
-          const arrowPoint = this.getArrowPoints(coords[0], coords[1]);
-          encodeRecord.coordinates.splice(1, 0, arrowPoint, arrowPoint);
-          // @ts-ignore
-          layer.arrowInsertCount++;
-        }
-      }
       return encodeRecord;
     }) as IEncodeFeature[];
 
     attributes.forEach((attribute) => {
       attribute.needRemapping = false;
     });
-    // 调整数据兼容 Amap2.0
-    this.adjustData2Amap2Coordinates(mappedData, layer);
 
     // 调整数据兼容 SimpleCoordinates
     this.adjustData2SimpleCoordinates(mappedData);
     return mappedData;
   }
 
-  private adjustData2Amap2Coordinates(
-    mappedData: IEncodeFeature[],
-    layer: ILayer,
-  ) {
-    // 根据地图的类型判断是否需要对点位数据进行处理, 若是高德2.0则需要对坐标进行相对偏移
-    if (
-      mappedData.length > 0 &&
-      this.mapService.version === Version['GAODE2.x']
-    ) {
-      const layerCenter = layer.coordCenter || layer.getSource().center;
-      // 单个的点数据
-      // @ts-ignore
-      mappedData
-        // TODO: 避免经纬度被重复计算导致坐标位置偏移
-        .filter((d) => !d.originCoordinates)
-        .map((d) => {
-          d.version = Version['GAODE2.x'];
-          // @ts-ignore
-          d.originCoordinates = cloneDeep(d.coordinates); // 为了兼容高德1.x 需要保存一份原始的经纬度坐标数据（许多上层逻辑依赖经纬度数据）
-          // @ts-ignore
-          // d.coordinates = this.mapService.lngLatToCoord(d.coordinates);
-          d.coordinates = this.mapService.coordToAMap2RelativeCoordinates(
-            d.coordinates,
-            layerCenter,
-          );
-        });
-    }
-  }
-
   private adjustData2SimpleCoordinates(mappedData: IEncodeFeature[]) {
-    if (mappedData.length > 0 && this.mapService.version === Version.SIMPLE) {
+    if (mappedData.length > 0 && this.mapService.version === 'SIMPLE') {
       mappedData.map((d) => {
         if (!d.simpleCoordinate) {
           d.coordinates = this.unProjectCoordinates(d.coordinates);
@@ -240,9 +169,7 @@ export default class DataMappingPlugin implements ILayerPlugin {
 
   private unProjectCoordinates(coordinates: any) {
     if (typeof coordinates[0] === 'number') {
-      return this.mapService.simpleMapCoord.unproject(
-        coordinates as [number, number],
-      );
+      return this.mapService.simpleMapCoord.unproject(coordinates as [number, number]);
     }
 
     if (coordinates[0] && coordinates[0][0] instanceof Array) {
@@ -252,9 +179,7 @@ export default class DataMappingPlugin implements ILayerPlugin {
         // @ts-ignore
         const c1 = [];
         coord.map((co: any) => {
-          c1.push(
-            this.mapService.simpleMapCoord.unproject(co as [number, number]),
-          );
+          c1.push(this.mapService.simpleMapCoord.unproject(co as [number, number]));
         });
         // @ts-ignore
         coords.push(c1);
@@ -266,19 +191,14 @@ export default class DataMappingPlugin implements ILayerPlugin {
       const coords = [];
       // @ts-ignore
       coordinates.map((coord) => {
-        coords.push(
-          this.mapService.simpleMapCoord.unproject(coord as [number, number]),
-        );
+        coords.push(this.mapService.simpleMapCoord.unproject(coord as [number, number]));
       });
       // @ts-ignore
       return coords;
     }
   }
 
-  private applyAttributeMapping(
-    attribute: IStyleAttribute,
-    record: { [key: string]: unknown },
-  ) {
+  private applyAttributeMapping(attribute: IStyleAttribute, record: { [key: string]: unknown }) {
     if (!attribute.scale) {
       return [];
     }
@@ -286,10 +206,7 @@ export default class DataMappingPlugin implements ILayerPlugin {
     const params: unknown[] = [];
 
     scalers.forEach(({ field }) => {
-      if (
-        record.hasOwnProperty(field) ||
-        attribute.scale?.type === 'variable'
-      ) {
+      if (record.hasOwnProperty(field) || attribute.scale?.type === 'variable') {
         // TODO:多字段，常量
         params.push(record[field]);
       }
@@ -304,10 +221,7 @@ export default class DataMappingPlugin implements ILayerPlugin {
   private getArrowPoints(p1: Position, p2: Position) {
     const dir = [p2[0] - p1[0], p2[1] - p1[1]];
     const normalizeDir = normalize(dir);
-    const arrowPoint = [
-      p1[0] + normalizeDir[0] * 0.0001,
-      p1[1] + normalizeDir[1] * 0.0001,
-    ];
+    const arrowPoint = [p1[0] + normalizeDir[0] * 0.0001, p1[1] + normalizeDir[1] * 0.0001];
     return arrowPoint;
   }
 }

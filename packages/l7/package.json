@@ -1,42 +1,40 @@
 {
   "name": "@antv/l7",
-  "version": "2.17.10",
+  "version": "2.22.3",
   "description": "A Large-scale WebGL-powered Geospatial Data Visualization",
+  "repository": "git@github.com:antvis/L7.git",
+  "license": "MIT",
+  "author": "https://github.com/orgs/antvis/people",
+  "sideEffects": true,
   "main": "lib/index.js",
+  "unpkg": "dist/l7.js",
   "module": "es/index.js",
   "types": "es/index.d.ts",
-  "unpkg": "dist/l7.js",
-  "sideEffects": true,
   "files": [
     "dist",
     "lib",
     "es",
-    "README.md"
+    "!dist/report.html"
   ],
   "scripts": {
-    "b": "father build",
-    "tsc": "tsc --project tsconfig.build.json",
-    "clean": "rimraf dist; rimraf es; rimraf lib;",
-    "build": "father build",
-    "build:cjs": "BABEL_ENV=cjs babel src --root-mode upward --out-dir lib --source-maps --extensions .ts,.tsx --delete-dir-on-start --no-comments",
-    "build:esm": "BABEL_ENV=esm babel src --root-mode upward --out-dir es --source-maps --extensions .ts,.tsx --delete-dir-on-start --no-comments",
-    "watch": "BABEL_ENV=cjs babel src --watch --root-mode upward --out-dir lib --source-maps --extensions .ts,.tsx --delete-dir-on-start --no-comments",
-    "sync": "tnpm sync"
+    "dev": "father dev",
+    "build": "npm run clean && father build",
+    "check-deps": "father doctor",
+    "lint": "eslint src",
+    "clean": "rimraf dist es lib"
   },
-  "author": "antv",
-  "license": "MIT",
   "dependencies": {
-    "@antv/l7-component": "2.17.10",
-    "@antv/l7-core": "2.17.10",
-    "@antv/l7-layers": "2.17.10",
-    "@antv/l7-maps": "2.17.10",
-    "@antv/l7-scene": "2.17.10",
-    "@antv/l7-source": "2.17.10",
-    "@antv/l7-utils": "2.17.10",
+    "@antv/l7-component": "workspace:*",
+    "@antv/l7-core": "workspace:*",
+    "@antv/l7-layers": "workspace:*",
+    "@antv/l7-maps": "workspace:*",
+    "@antv/l7-scene": "workspace:*",
+    "@antv/l7-source": "workspace:*",
+    "@antv/l7-utils": "workspace:*",
     "@babel/runtime": "^7.7.7"
   },
-  "gitHead": "684ba4eb806a798713496d3fc0b4d1e17517dc31",
   "publishConfig": {
-    "access": "public"
+    "access": "public",
+    "registry": "https://registry.npmjs.org"
   }
 }

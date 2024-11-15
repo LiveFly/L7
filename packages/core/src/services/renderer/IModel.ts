@@ -1,7 +1,9 @@
-import { gl } from './gl';
-import { IAttribute } from './IAttribute';
-import { IElements } from './IElements';
-import { IUniform } from './IUniform';
+import type { gl } from './gl';
+import type { IAttribute } from './IAttribute';
+import type { IBuffer } from './IBuffer';
+import type { IElements } from './IElements';
+import type { ITexture2D } from './ITexture2D';
+import type { IUniform } from './IUniform';
 
 export interface IBlendOptions {
   // gl.enable(gl.BLEND)
@@ -10,18 +12,8 @@ export interface IBlendOptions {
   func: BlendingFunctionSeparate;
   // gl.blendEquation
   equation: {
-    rgb:
-      | gl.FUNC_ADD
-      | gl.FUNC_SUBTRACT
-      | gl.FUNC_REVERSE_SUBTRACT
-      | gl.MIN_EXT
-      | gl.MAX_EXT;
-    alpha?:
-      | gl.FUNC_ADD
-      | gl.FUNC_SUBTRACT
-      | gl.FUNC_REVERSE_SUBTRACT
-      | gl.MIN_EXT
-      | gl.MAX_EXT;
+    rgb: gl.FUNC_ADD | gl.FUNC_SUBTRACT | gl.FUNC_REVERSE_SUBTRACT | gl.MIN_EXT | gl.MAX_EXT;
+    alpha?: gl.FUNC_ADD | gl.FUNC_SUBTRACT | gl.FUNC_REVERSE_SUBTRACT | gl.MIN_EXT | gl.MAX_EXT;
   };
   // gl.blendColor
   color: [number, number, number, number];
@@ -136,14 +128,7 @@ type BlendingFunctionSeparate = Partial<{
     | gl.SRC_ALPHA_SATURATE;
   dstAlpha: number;
 }>;
-export type injectType =
-  | 'vs:#decl'
-  | 'vs:#main-start'
-  | 'vs:#main-end'
-  | 'fs:#decl'
-  | 'fs:#main-start'
-  | 'fs:#main-end';
-export type IInject = Partial<Record<injectType, string>>;
+
 export interface IModelInitializationOptions {
   /**
    * 该 model 是否支持拾取
@@ -155,11 +140,12 @@ export interface IModelInitializationOptions {
   vs: string;
   fs: string;
 
-  inject?: IInject;
-
   uniforms?: {
     [key: string]: IUniform;
   };
+  // UBOs
+  uniformBuffers?: IBuffer[];
+  textures?: ITexture2D[];
 
   attributes: {
     [key: string]: IAttribute;
@@ -234,6 +220,13 @@ export interface IModelInitializationOptions {
     // gl.cullFace
     face: gl.FRONT | gl.BACK;
   };
+
+  /**
+   * When disabled, a global diagnostic filter can be used to apply a diagnostic filter to the entire WGSL module. Default to `true`.
+   * @see https://www.khronos.org/opengl/wiki/Sampler_(GLSL)#Non-uniform_flow_control
+   * @see https://www.w3.org/TR/WGSL/#example-70cf6bac
+   */
+  diagnosticDerivativeUniformityEnabled?: boolean;
 }
 
 export interface IModelDrawOptions {
@@ -249,6 +242,8 @@ export interface IModelDrawOptions {
   blend?: Partial<IBlendOptions>;
 
   stencil?: Partial<IStencilOptions>;
+
+  textures?: ITexture2D[];
 }
 
 /**
@@ -260,10 +255,7 @@ export interface IModelDrawOptions {
  */
 export interface IModel {
   updateAttributes(attributes: { [key: string]: IAttribute }): void;
-  updateAttributesAndElements(
-    attributes: { [key: string]: IAttribute },
-    elements: IElements,
-  ): void;
+  updateAttributesAndElements(attributes: { [key: string]: IAttribute }, elements: IElements): void;
   addUniforms(uniforms: { [key: string]: IUniform }): void;
   draw(options: IModelDrawOptions, pick?: boolean): void;
   destroy(): void;

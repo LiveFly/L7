@@ -1,13 +1,8 @@
 import { guid } from '@antv/l7-utils';
 import { EventEmitter } from 'eventemitter3';
-import { injectable } from 'inversify';
-import { IDebugService, ILog, IRenderInfo } from './IDebugService';
+import type { IDebugService, ILog, IRenderInfo } from './IDebugService';
 
-@injectable()
-export default class DebugService
-  extends EventEmitter
-  implements IDebugService
-{
+export default class DebugService extends EventEmitter implements IDebugService {
   private renderMap = new Map<string, IRenderInfo>();
 
   private enable: boolean = false;

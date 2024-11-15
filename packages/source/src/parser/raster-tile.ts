@@ -1,17 +1,10 @@
-import { ITileParserCFG, RasterTileType } from '@antv/l7-core';
-import {
-  ITileBand,
-  SourceTile,
-  TileLoadParams,
-  TilesetManagerOptions,
-} from '@antv/l7-utils';
-import { IParserData } from '../interface';
+import type { ITileParserCFG } from '@antv/l7-core';
+import { RasterTileType } from '@antv/l7-core';
+import type { ITileBand, SourceTile, TileLoadParams, TilesetManagerOptions } from '@antv/l7-utils';
+import type { IParserData } from '../interface';
 import { getCustomData, getCustomImageData } from '../utils/tile/getCustomData';
-import {
-  defaultFormat,
-  getTileBuffer,
-  getTileImage,
-} from '../utils/tile/getRasterTile';
+import { defaultFormat, getTileBuffer, getTileImage } from '../utils/tile/getRasterTile';
+import { extentToCoord } from '../utils/util';
 
 const DEFAULT_CONFIG: Partial<TilesetManagerOptions> = {
   tileSize: 256,
@@ -45,6 +38,9 @@ export default function rasterTile(
   if (isUrlError(data)) {
     throw new Error('tile server url is error');
   }
+
+  const { extent = [Infinity, Infinity, -Infinity, -Infinity], coordinates } = cfg;
+
   let tileDataType: RasterTileType = cfg?.dataType || RasterTileType.IMAGE;
   // Tip: RasterTileType.RGB 是彩色多通道的数据纹理，同样走数据纹理的请求
   if (tileDataType === RasterTileType.RGB) {
@@ -63,13 +59,7 @@ export default function rasterTile(
           cfg?.getCustomData,
         );
       case RasterTileType.ARRAYBUFFER:
-        return getTileBuffer(
-          data,
-          tileParams,
-          tile,
-          cfg?.format || defaultFormat,
-          cfg?.operation,
-        );
+        return getTileBuffer(data, tileParams, tile, cfg);
       case RasterTileType.CUSTOMARRAYBUFFER:
       case RasterTileType.CUSTOMRGB:
         return getCustomData(
@@ -83,11 +73,18 @@ export default function rasterTile(
         return getTileImage(data as string | string[], tileParams, tile, cfg);
     }
   };
+
   const tilesetOptions = { ...DEFAULT_CONFIG, ...cfg, getTileData };
+  const rasterTileCoord = extentToCoord(coordinates, extent);
 
   return {
     data,
-    dataArray: [],
+    dataArray: [
+      {
+        _id: 1,
+        coordinates: rasterTileCoord,
+      },
+    ],
     tilesetOptions,
     isTile: true,
   };

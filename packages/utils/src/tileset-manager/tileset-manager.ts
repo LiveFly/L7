@@ -1,5 +1,5 @@
 import EventEmitter from 'eventemitter3';
-import { throttle } from 'lodash';
+import { lodashUtil } from '../lodash-adapter';
 import {
   BOUNDS_BUFFER_SCALE,
   DEFAULT_CACHE_SCALE,
@@ -8,13 +8,12 @@ import {
   UPDATE_TILE_STRATEGIES,
 } from './const';
 import { SourceTile } from './tile';
-import { TileBounds, TilesetManagerOptions, UpdateTileStrategy } from './types';
-import {
-  getLatLonBoundsBuffer,
-  isLatLonBoundsContains,
-} from './utils/bound-buffer';
+import type { TileBounds, TilesetManagerOptions } from './types';
+import { UpdateTileStrategy } from './types';
+import { getLatLonBoundsBuffer, isLatLonBoundsContains } from './utils/bound-buffer';
 import { getTileIndices, osmLonLat2TileXY } from './utils/lonlat-tile';
 
+const { throttle } = lodashUtil;
 export enum TileEventType {
   TilesLoadStart = 'tiles-load-start',
   TileLoaded = 'tile-loaded',
@@ -35,9 +34,7 @@ export class TilesetManager extends EventEmitter {
   // 缓存的瓦片数组
   public get tiles() {
     // 通过 zoom 层级排序，最小的层级在上面
-    const tiles = Array.from(this.cacheTiles.values()).sort(
-      (t1, t2) => t1.z - t2.z,
-    );
+    const tiles = Array.from(this.cacheTiles.values()).sort((t1, t2) => t1.z - t2.z);
     return tiles;
   }
   // 当前层级的瓦片
@@ -64,7 +61,7 @@ export class TilesetManager extends EventEmitter {
       getTileData: NOOP,
       warp: true,
       // TODO 更新策略
-      updateStrategy: UpdateTileStrategy.Overlap,
+      updateStrategy: UpdateTileStrategy.Replace,
     };
     this.updateOptions(options);
   }
@@ -72,13 +69,9 @@ export class TilesetManager extends EventEmitter {
   // 更新配置项
   public updateOptions(options: Partial<TilesetManagerOptions>) {
     const minZoom =
-      options.minZoom === undefined
-        ? this.options.minZoom
-        : Math.ceil(options.minZoom);
+      options.minZoom === undefined ? this.options.minZoom : Math.ceil(options.minZoom);
     const maxZoom =
-      options.maxZoom === undefined
-        ? this.options.maxZoom
-        : Math.floor(options.maxZoom);
+      options.maxZoom === undefined ? this.options.maxZoom : Math.floor(options.maxZoom);
     this.options = { ...this.options, ...options, minZoom, maxZoom };
   }
 
@@ -95,19 +88,13 @@ export class TilesetManager extends EventEmitter {
     if (
       this.lastViewStates &&
       this.lastViewStates.zoom === verifyZoom &&
-      isLatLonBoundsContains(
-        this.lastViewStates.latLonBoundsBuffer,
-        latLonBounds,
-      )
+      isLatLonBoundsContains(this.lastViewStates.latLonBoundsBuffer, latLonBounds)
     ) {
       return;
     }
 
     // 扩大缓存区的边界
-    const latLonBoundsBuffer = getLatLonBoundsBuffer(
-      latLonBounds,
-      BOUNDS_BUFFER_SCALE,
-    );
+    const latLonBoundsBuffer = getLatLonBoundsBuffer(latLonBounds, BOUNDS_BUFFER_SCALE);
 
     this.lastViewStates = {
       zoom: verifyZoom,
@@ -117,14 +104,9 @@ export class TilesetManager extends EventEmitter {
 
     this.currentZoom = verifyZoom;
     let isAddTile = false;
-    const tileIndices = this.getTileIndices(
-      verifyZoom,
-      latLonBoundsBuffer,
-    ).filter((tile) => {
+    const tileIndices = this.getTileIndices(verifyZoom, latLonBoundsBuffer).filter((tile) => {
       // 处理数据 warp
-      return (
-        this.options.warp || (tile.x >= 0 && tile.x < Math.pow(2, verifyZoom))
-      );
+      return this.options.warp || (tile.x >= 0 && tile.x < Math.pow(2, verifyZoom));
     });
     this.emit(TileEventType.TilesLoadStart);
     this.currentTiles = tileIndices.map(({ x, y, z }) => {
@@ -271,7 +253,6 @@ export class TilesetManager extends EventEmitter {
     }
 
     const tiles = Array.from(this.cacheTiles.values());
-
     if (typeof updateStrategy === 'function') {
       updateStrategy(tiles);
     } else {
@@ -295,10 +276,7 @@ export class TilesetManager extends EventEmitter {
   }
 
   // 获取当前视野层级瓦片的所有索引
-  protected getTileIndices(
-    zoom: number,
-    latLonBounds: [number, number, number, number],
-  ) {
+  protected getTileIndices(zoom: number, latLonBounds: [number, number, number, number]) {
     const { tileSize, extent, zoomOffset } = this.options;
     const maxZoom = Math.floor(this.options.maxZoom);
     const minZoom = Math.ceil(this.options.minZoom);

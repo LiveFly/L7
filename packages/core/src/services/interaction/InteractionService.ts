@@ -1,12 +1,9 @@
-import { $window, isMini } from '@antv/l7-utils';
 import EventEmitter from 'eventemitter3';
-import { inject, injectable } from 'inversify';
-import Hammer from 'l7hammerjs';
-import 'reflect-metadata';
-// @ts-ignore
-import { TYPES } from '../../types';
-import { ILngLat, IMapService } from '../map/IMapService';
-import { IInteractionService, InteractionEvent } from './IInteractionService';
+import Hammer from 'hammerjs';
+import type { L7Container } from '../../inversify.config';
+import type { ILngLat } from '../map/IMapService';
+import type { IInteractionService } from './IInteractionService';
+import { InteractionEvent } from './IInteractionService';
 const DragEventMap: { [key: string]: string } = {
   panstart: 'dragstart',
   panmove: 'dragging',
@@ -17,14 +14,17 @@ const DragEventMap: { [key: string]: string } = {
  * 由于目前 L7 与地图结合的方案为双 canvas 而非共享 WebGL Context，事件监听注册在地图底图上。
  * 除此之外，后续如果支持非地图场景，事件监听就需要注册在 L7 canvas 上。
  */
-@injectable()
-export default class InteractionService
-  extends EventEmitter
-  implements IInteractionService
-{
+export default class InteractionService extends EventEmitter implements IInteractionService {
   public indragging: boolean = false;
-  @inject(TYPES.IMapService)
-  private readonly mapService: IMapService;
+
+  get mapService() {
+    return this.container.mapService;
+  }
+
+  constructor(private readonly container: L7Container) {
+    super();
+  }
+
   // @ts-ignore
   // private hammertime: HammerManager;
   private hammertime: any;
@@ -62,84 +62,61 @@ export default class InteractionService
     this.emit(InteractionEvent.Active, { featureId: id });
   }
 
-  public handleMiniEvent(e: any) {
-    // @ts-ignore
-    this.onHover({
-      clientX: e.touches[0].pageX,
-      clientY: e.touches[0].pageY,
-      type: 'touch',
-    });
-  }
-
   private addEventListenerOnMap() {
     const $containter = this.mapService.getMapContainer();
     if ($containter) {
-      if (isMini) {
-        $window.document.addEventListener(
-          'touchstart',
-          this.handleMiniEvent.bind(this),
-        );
-      } else {
-        const hammertime = new Hammer.Manager($containter);
-        // $containter.addEventListener('mousemove', this.onHover);
-        // $containter.addEventListener('click', this.onHover);
-        hammertime.add(
-          new Hammer.Tap({
-            event: 'dblclick',
-            taps: 2,
-          }),
-        );
-        hammertime.add(
-          new Hammer.Tap({
-            event: 'click',
-          }),
-        );
-        hammertime.add(new Hammer.Pan({ threshold: 0, pointers: 0 }));
-        hammertime.add(new Hammer.Press({}));
-        // hammertime.get('pan').set({ direction: Hammer.DIRECTION_ALL });
-        // hammertime.get('pinch').set({ enable: true });
-        hammertime.on('dblclick click', this.onHammer);
-        hammertime.on('panstart panmove panend pancancel', this.onDrag);
-        // $containter.addEventListener('touchstart', this.onTouch);
-        $containter.addEventListener('mousemove', this.onHover);
-        // $containter.addEventListener('click', this.onHover);
-        $containter.addEventListener('mousedown', this.onHover, true);
-        $containter.addEventListener('mouseup', this.onHover);
-        $containter.addEventListener('contextmenu', this.onHover);
-        this.hammertime = hammertime;
-      }
-
-      // Tip: 根据场景注册事件到 L7 canvas 上
+      const hammertime = new Hammer.Manager($containter);
+      // $containter.addEventListener('mousemove', this.onHover);
+      // $containter.addEventListener('click', this.onHover);
+      hammertime.add(
+        new Hammer.Tap({
+          event: 'dblclick',
+          taps: 2,
+        }),
+      );
+      hammertime.add(
+        new Hammer.Tap({
+          event: 'click',
+        }),
+      );
+      hammertime.add(new Hammer.Pan({ threshold: 0, pointers: 0 }));
+      hammertime.add(new Hammer.Press({}));
+      // hammertime.get('pan').set({ direction: Hammer.DIRECTION_ALL });
+      // hammertime.get('pinch').set({ enable: true });
+      hammertime.on('dblclick click', this.onHammer);
+      hammertime.on('panstart panmove panend pancancel', this.onDrag);
+      $containter.addEventListener('touchstart', this.onTouch);
+      $containter.addEventListener('touchend', this.onTouchEnd);
+      $containter.addEventListener('mousemove', this.onHover);
+      $containter.addEventListener('touchmove', this.onTouchMove);
+      // $containter.addEventListener('click', this.onHover);
+      $containter.addEventListener('mousedown', this.onHover, true);
+      $containter.addEventListener('mouseup', this.onHover);
+      $containter.addEventListener('contextmenu', this.onHover);
+      this.hammertime = hammertime;
     }
+
+    // Tip: 根据场景注册事件到 L7 canvas 上
   }
   private removeEventListenerOnMap() {
-    if (isMini) {
-      $window.document.removeEventListener(
-        'touchstart',
-        this.handleMiniEvent.bind(this),
-      );
-    } else {
-      const $containter = this.mapService.getMapContainer();
-      if ($containter) {
-        $containter.removeEventListener('mousemove', this.onHover);
-        this.hammertime.off('dblclick click', this.onHammer);
-        this.hammertime.off('panstart panmove panend pancancel', this.onDrag);
-        // $containter.removeEventListener('touchstart', this.onTouch);
-        // $containter.removeEventListener('click', this.onHover);
-        $containter.removeEventListener('mousedown', this.onHover);
-        $containter.removeEventListener('mouseup', this.onHover);
-        // $containter.removeEventListener('dblclick', this.onHover);
-        $containter.removeEventListener('contextmenu', this.onHover);
-      }
+    const $containter = this.mapService.getMapContainer();
+    if ($containter) {
+      $containter.removeEventListener('mousemove', this.onHover);
+      this.hammertime.off('dblclick click', this.onHammer);
+      this.hammertime.off('panstart panmove panend pancancel', this.onDrag);
+      $containter.removeEventListener('touchstart', this.onTouch);
+      $containter.removeEventListener('touchend', this.onTouchEnd);
+      $containter.removeEventListener('mousedown', this.onHover);
+      $containter.removeEventListener('mouseup', this.onHover);
+      // $containter.removeEventListener('dblclick', this.onHover);
+      $containter.removeEventListener('contextmenu', this.onHover);
     }
   }
 
   private onDrag = (target: any) => {
     const interactionTarget = this.interactionEvent(target);
     interactionTarget.type = DragEventMap[interactionTarget.type];
-    interactionTarget.type === 'dragging'
-      ? (this.indragging = true)
-      : (this.indragging = false);
+    interactionTarget.type === 'dragging' ? (this.indragging = true) : (this.indragging = false);
     this.emit(InteractionEvent.Drag, interactionTarget);
   };
 
@@ -152,9 +129,30 @@ export default class InteractionService
     const touch = target.touches[0];
     // @ts-ignore
     this.onHover({
-      x: touch.pageX,
-      y: touch.pageY,
-      type: 'touch',
+      clientX: touch.clientX,
+      clientY: touch.clientY,
+      type: 'touchstart',
+    });
+  };
+  private onTouchEnd = (target: TouchEvent) => {
+    if (target.changedTouches.length > 0) {
+      const touch = target.changedTouches[0];
+      // @ts-ignore
+      this.onHover({
+        clientX: touch.clientX,
+        clientY: touch.clientY,
+        type: 'touchend',
+      });
+    }
+  };
+  // touch move == drag map 目前会被拦截
+  private onTouchMove = (target: TouchEvent) => {
+    const touch = target.changedTouches[0];
+    // @ts-ignore
+    this.onHover({
+      clientX: touch.clientX,
+      clientY: touch.clientY,
+      type: 'touchmove',
     });
   };
 
@@ -186,27 +184,12 @@ export default class InteractionService
     const type = event.type;
     const $containter = this.mapService.getMapContainer();
     if ($containter) {
-      if (isMini) {
-        // l7 - mini
-        // @ts-ignore
-        x = x - $containter.left - 0;
-        // @ts-ignore
-        y = y - $containter.top - 0;
-      } else {
-        const { top, left } = $containter.getBoundingClientRect();
-        x = x - left - $containter.clientLeft;
-        y = y - top - $containter.clientTop;
-      }
+      const { top, left } = $containter.getBoundingClientRect();
+      x = x - left - $containter.clientLeft;
+      y = y - top - $containter.clientTop;
     }
     const lngLat = this.mapService.containerToLngLat([x, y]);
-
     if (type === 'click') {
-      if (!isMini) {
-        // l7 - mini
-        if ('ontouchstart' in document.documentElement === true) {
-          return;
-        }
-      }
       this.isDoubleTap(x, y, lngLat);
       return;
     }

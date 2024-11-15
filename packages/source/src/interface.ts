@@ -89,18 +89,18 @@ export type IRasterLayerData = number[] | IRasterFileData | IRasterFileData[];
 export interface IRasterCfg {
   format?: IRasterFormat;
   operation?: IBandsOperation;
-  extent: [number, number, number, number];
+  extent?: [number, number, number, number];
+  coordinates?: [[number, number], [number, number], [number, number], [number, number]]; // 非矩形
   width: number;
   height: number;
   max: number;
   min: number;
 }
 
-import { Feature } from '@turf/helpers';
 export interface ITileSource {
   getTileData(layer: string): any;
 }
 
 export type MapboxVectorTile = {
-  layers: { [_: string]: { features: Feature[] } };
+  layers: { [_: string]: { features: GeoJSON.Feature[] } };
 };

@@ -1,7 +1,11 @@
+import type { ILegend } from '@antv/l7-core';
 import BaseLayer from '../core/BaseLayer';
-import { IRasterLayerStyleOptions } from '../core/interface';
-import RasterModels, { RasterModelType } from './models/index';
-export default class RaterLayer extends BaseLayer<IRasterLayerStyleOptions> {
+import type { IRasterLayerStyleOptions } from '../core/interface';
+import { rampColor2legend } from '../utils/rampcolor_legend';
+import type { RasterModelType } from './models/index';
+import RasterModels from './models/index';
+
+export default class RasterLayer extends BaseLayer<IRasterLayerStyleOptions> {
   public type: string = 'RasterLayer';
   public async buildModels() {
     const modelType = this.getModelType();
@@ -24,14 +28,26 @@ export default class RaterLayer extends BaseLayer<IRasterLayerStyleOptions> {
     // 根据 source 的类型判断 model type
     const parserType = this.layerSource.getParserType();
     switch (parserType) {
-      case 'raster':
+      case 'raster' || 'ndi':
         return 'raster';
       case 'rasterRgb':
+        return 'rasterRgb';
+      case 'rgb':
         return 'rasterRgb';
       case 'image':
         return 'rasterTerrainRgb';
       default:
         return 'raster';
     }
+  }
+  public getLegend(name: string): ILegend {
+    if (name !== 'color')
+      return {
+        type: undefined,
+        field: undefined,
+        items: [],
+      };
+    const rampColors = this.getLayerConfig().rampColors;
+    return rampColor2legend(rampColors, name);
   }
 }

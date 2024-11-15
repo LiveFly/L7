@@ -1,11 +1,12 @@
-import { IParseDataItem } from '@antv/l7-core';
+import type { IParseDataItem } from '@antv/l7-core';
 import BaseLayer from '../core/BaseLayer';
-import { ILineLayerStyleOptions } from '../core/interface';
-import LineModels, { LineModelType } from './models';
+import type { ILineLayerStyleOptions } from '../core/interface';
+import type { LineModelType } from './models';
+import LineModels from './models';
 
 export default class LineLayer extends BaseLayer<ILineLayerStyleOptions> {
   public type: string = 'LineLayer';
-  public enableShaderEncodeStyles = ['opacity', 'offsets', 'stroke'];
+  public enableShaderEncodeStyles = ['stroke', 'offsets', 'opacity', 'thetaOffset']; //注意顺序 4+2+1+1
   public arrowInsertCount: number = 0;
   public defaultSourceConfig = {
     data: [
@@ -46,6 +47,7 @@ export default class LineLayer extends BaseLayer<ILineLayerStyleOptions> {
       tileLine: {},
       earthArc3d: {},
       flowline: {},
+      arrow: {},
     };
     return defaultConfig[type];
   }
@@ -54,8 +56,7 @@ export default class LineLayer extends BaseLayer<ILineLayerStyleOptions> {
       return this.layerType as LineModelType;
     }
 
-    const shapeAttribute =
-      this.styleAttributeService.getLayerStyleAttribute('shape');
+    const shapeAttribute = this.styleAttributeService.getLayerStyleAttribute('shape');
     const shape = shapeAttribute?.scale?.field as LineModelType;
     return shape || 'line';
   }

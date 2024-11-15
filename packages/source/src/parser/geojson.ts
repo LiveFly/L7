@@ -1,15 +1,8 @@
-// @ts-ignore
-import rewind from '@mapbox/geojson-rewind';
-import {
-  Feature,
-  FeatureCollection,
-  Geometries,
-  Geometry,
-  Properties,
-} from '@turf/helpers';
+import type { Feature, FeatureCollection, Geometries, Geometry, Properties } from '@turf/helpers';
 import { getCoords } from '@turf/invariant';
 import { flattenEach } from '@turf/meta';
-import { IFeatureKey, IParseDataItem, IParserData } from '../interface';
+import type { IFeatureKey, IParseDataItem, IParserData } from '../interface';
+import { geojsonRewind } from '../utils/util';
 
 interface IParserCFG {
   idField?: string;
@@ -38,7 +31,7 @@ function getFeatureID(feature: Feature<Geometries, Properties>, key?: string) {
   }
 
   // @ts-ignore
-  if (typeof feature.properties[key] * 1 === 'number') {
+  if (typeof (feature.properties[key] * 1) === 'number') {
     // @ts-ignore
     return feature.properties[key] * 1;
   }
@@ -74,7 +67,7 @@ export default function geoJSON(
     );
   });
 
-  rewind(data, true); // 设置地理多边形方向 If clockwise is true, the outer ring is clockwise, otherwise it is counterclockwise.
+  data = geojsonRewind(data);
 
   if (data.features.length === 0) {
     return {
@@ -84,25 +77,21 @@ export default function geoJSON(
   }
 
   // multi feature 情况拆分
-  flattenEach(
-    data,
-    (currentFeature: Feature<Geometries, Properties>, featureIndex: number) => {
-      let featureId = getFeatureID(currentFeature, cfg?.featureId);
-      if (featureId === null) {
-        featureId = featureIndex;
-      }
+  flattenEach(data, (currentFeature: Feature<Geometries, Properties>, featureIndex: number) => {
+    let featureId = getFeatureID(currentFeature, cfg?.featureId);
+    if (featureId === null) {
+      featureId = featureIndex;
+    }
+    const sortedID = featureId;
 
-      const sortedID = featureId;
-
-      const coord = getCoords(currentFeature);
-      const dataItem: IParseDataItem = {
-        ...currentFeature.properties,
-        coordinates: coord,
-        _id: sortedID,
-      };
-      resultData.push(dataItem);
-    },
-  );
+    const coord = getCoords(currentFeature);
+    const dataItem: IParseDataItem = {
+      ...currentFeature.properties,
+      coordinates: coord,
+      _id: sortedID,
+    };
+    resultData.push(dataItem);
+  });
 
   return {
     dataArray: resultData,

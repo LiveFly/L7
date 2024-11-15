@@ -1,6 +1,4 @@
-import { ILayer, ILayerPlugin } from '@antv/l7-core';
-import { injectable } from 'inversify';
-import 'reflect-metadata';
+import type { ILayer, ILayerPlugin } from '@antv/l7-core';
 
 const lightTypeUniformMap = {
   directional: {
@@ -65,9 +63,7 @@ const DEFAULT_SPOT_LIGHT = {
   blur: 5,
 };
 
-export function generateLightingUniforms(
-  lights?: Array<Partial<IDirectionalLight | ISpotLight>>,
-) {
+export function generateLightingUniforms(lights?: Array<Partial<IDirectionalLight | ISpotLight>>) {
   const lightsMap: {
     u_DirectionalLights: Array<Omit<IDirectionalLight, 'type'>>;
     u_NumOfDirectionalLights: number;
@@ -103,7 +99,6 @@ export function generateLightingUniforms(
 /**
  * 光照 & Shadow
  */
-@injectable()
 export default class LightingPlugin implements ILayerPlugin {
   public apply(layer: ILayer) {
     layer.hooks.beforeRender.tap('LightingPlugin', () => {

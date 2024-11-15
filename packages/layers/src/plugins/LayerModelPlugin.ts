@@ -1,11 +1,9 @@
-import { IDebugLog, ILayer, ILayerPlugin, ILayerStage } from '@antv/l7-core';
-import { injectable } from 'inversify';
-import 'reflect-metadata';
-import TileLayer from '../tile/tileLayer/BaseLayer';
+import type { ILayer, ILayerPlugin } from '@antv/l7-core';
+import { IDebugLog, ILayerStage } from '@antv/l7-core';
+// import TileLayer from '../tile/core/BaseLayer';
 /**
  * Layer Model 初始化，更新，销毁
  */
-@injectable()
 export default class LayerModelPlugin implements ILayerPlugin {
   private async build(layer: ILayer) {
     // 更新Model 配置项 style options
@@ -29,7 +27,6 @@ export default class LayerModelPlugin implements ILayerPlugin {
     layer.hooks.init.tapPromise('LayerModelPlugin', async () => {
       if (layer.getSource().isTile) {
         layer.prepareBuildModel();
-        layer.tileLayer = new TileLayer(layer);
         return;
       }
       layer.log(IDebugLog.BuildModelStart, ILayerStage.INIT);
@@ -37,22 +34,18 @@ export default class LayerModelPlugin implements ILayerPlugin {
       layer.log(IDebugLog.BuildModelEnd, ILayerStage.INIT);
     });
 
-    layer.hooks.beforeRenderData.tapPromise(
-      'LayerModelPlugin',
-      async (flag: boolean) => {
-        if (!flag) {
-          // TileLayer  不需要rebuilder
-          return false;
-        }
-        if (layer.getSource().isTile) {
-          layer.tileLayer = new TileLayer(layer);
-          return false;
-        }
-        layer.log(IDebugLog.BuildModelStart, ILayerStage.UPDATE);
-        await this.prepareLayerModel(layer);
-        layer.log(IDebugLog.BuildModelEnd, ILayerStage.UPDATE);
-        return true;
-      },
-    );
+    layer.hooks.beforeRenderData.tapPromise('LayerModelPlugin', async (flag: boolean) => {
+      if (!flag) {
+        // TileLayer  不需要rebuilder
+        return false;
+      }
+      if (layer.getSource().isTile) {
+        return false;
+      }
+      layer.log(IDebugLog.BuildModelStart, ILayerStage.UPDATE);
+      await this.prepareLayerModel(layer);
+      layer.log(IDebugLog.BuildModelEnd, ILayerStage.UPDATE);
+      return true;
+    });
   }
 }

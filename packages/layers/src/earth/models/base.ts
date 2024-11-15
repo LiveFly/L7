@@ -1,19 +1,21 @@
-import {
-  AttributeType,
-  gl,
-  IEncodeFeature,
-  IModel,
-  IModelUniform,
-  ITexture2D,
-} from '@antv/l7-core';
+import type { IEncodeFeature, IModel, ITexture2D } from '@antv/l7-core';
+import { AttributeType, gl } from '@antv/l7-core';
 
 import BaseModel from '../../core/BaseModel';
 import { earthTriangulation } from '../../core/triangulation';
 
-import baseFrag from '../shaders/base_frag.glsl';
-import baseVert from '../shaders/base_vert.glsl';
+import baseFrag from '../shaders/base/base_frag.glsl';
+import baseVert from '../shaders/base/base_vert.glsl';
 
 export default class BaseEarthModel extends BaseModel {
+  protected get attributeLocation() {
+    return Object.assign(super.attributeLocation, {
+      MAX: super.attributeLocation.MAX,
+      NORMAL: 9,
+      UV: 10,
+    });
+  }
+
   protected texture: ITexture2D;
   // T: 当前的地球时间 - 控制太阳的方位
   private earthTime: number = 3.4;
@@ -23,8 +25,11 @@ export default class BaseEarthModel extends BaseModel {
   private sunRadius = Math.sqrt(
     this.sunX * this.sunX + this.sunY * this.sunY + this.sunZ * this.sunZ,
   );
-
-  public getUninforms(): IModelUniform {
+  protected getCommonUniformsInfo(): {
+    uniformsArray: number[];
+    uniformsLength: number;
+    uniformsOption: { [key: string]: any };
+  } {
     const { animateOption, globalOptions } = this.layer.getLayerConfig();
     if (animateOption?.enable) {
       // @ts-ignore
@@ -33,20 +38,21 @@ export default class BaseEarthModel extends BaseModel {
         reg: 0.002,
       });
       this.earthTime += 0.02;
-
       this.sunY = 10;
       this.sunX = Math.cos(this.earthTime) * (this.sunRadius - this.sunY);
       this.sunZ = Math.sin(this.earthTime) * (this.sunRadius - this.sunY);
     }
 
-    return {
+    const commonOptions = {
+      u_sunLight: [this.sunX, this.sunY, this.sunZ, 0.0],
       u_ambientRatio: globalOptions?.ambientRatio || 0.6, // 环境光
       u_diffuseRatio: globalOptions?.diffuseRatio || 0.4, // 漫反射
       u_specularRatio: globalOptions?.specularRatio || 0.1, // 高光反射
-      u_sunLight: [this.sunX, this.sunY, this.sunZ],
-
-      u_texture: this.texture,
+      // u_texture: this.texture,
     };
+    this.textures = [this.texture];
+    const commonBufferInfo = this.getUniformsBufferInfo(commonOptions);
+    return commonBufferInfo;
   }
 
   public setEarthTime(time: number) {
@@ -77,9 +83,10 @@ export default class BaseEarthModel extends BaseModel {
         width: imageData[0].width,
         height: imageData[0].height,
       });
+      this.textures = [this.texture];
       this.layerService.reRender();
     });
-
+    this.initUniformsBuffer();
     return this.buildModels();
   }
 
@@ -95,6 +102,7 @@ export default class BaseEarthModel extends BaseModel {
       moduleName: 'earthBase',
       vertexShader: baseVert,
       fragmentShader: baseFrag,
+      defines: this.getDefines(),
       triangulation: earthTriangulation,
       depth: { enable: true },
       blend: this.getBlend(),
@@ -103,29 +111,31 @@ export default class BaseEarthModel extends BaseModel {
   }
 
   protected registerBuiltinAttributes() {
-    this.styleAttributeService.registerStyleAttribute({
-      name: 'size',
-      type: AttributeType.Attribute,
-      descriptor: {
-        name: 'a_Size',
-        buffer: {
-          usage: gl.DYNAMIC_DRAW,
-          data: [],
-          type: gl.FLOAT,
-        },
-        size: 1,
-        update: (feature: IEncodeFeature) => {
-          const { size = 1 } = feature;
-          return Array.isArray(size) ? [size[0]] : [size as number];
-        },
-      },
-    });
+    // this.styleAttributeService.registerStyleAttribute({
+    //   name: 'size',
+    //   type: AttributeType.Attribute,
+    //   descriptor: {
+    //     name: 'a_Size',
+    //     shaderLocation: this.attributeLocation.SIZE,
+    //     buffer: {
+    //       usage: gl.DYNAMIC_DRAW,
+    //       data: [],
+    //       type: gl.FLOAT,
+    //     },
+    //     size: 1,
+    //     update: (feature: IEncodeFeature) => {
+    //       const { size = 1 } = feature;
+    //       return Array.isArray(size) ? [size[0]] : [size as number];
+    //     },
+    //   },
+    // });
 
     this.styleAttributeService.registerStyleAttribute({
       name: 'normal',
       type: AttributeType.Attribute,
       descriptor: {
         name: 'a_Normal',
+        shaderLocation: this.attributeLocation.NORMAL,
         buffer: {
           usage: gl.STATIC_DRAW,
           data: [],
@@ -149,6 +159,7 @@ export default class BaseEarthModel extends BaseModel {
       type: AttributeType.Attribute,
       descriptor: {
         name: 'a_Uv',
+        shaderLocation: this.attributeLocation.UV,
         buffer: {
           // give the WebGL driver a hint that this buffer may change
           usage: gl.DYNAMIC_DRAW,
@@ -156,11 +167,7 @@ export default class BaseEarthModel extends BaseModel {
           type: gl.FLOAT,
         },
         size: 2,
-        update: (
-          feature: IEncodeFeature,
-          featureIdx: number,
-          vertex: number[],
-        ) => {
+        update: (feature: IEncodeFeature, featureIdx: number, vertex: number[]) => {
           return [vertex[3], vertex[4]];
         },
       },

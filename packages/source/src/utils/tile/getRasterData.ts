@@ -1,16 +1,6 @@
-import {
-  getArrayBuffer,
-  ITileBand,
-  makeXMLHttpRequestPromise,
-  RequestParameters,
-  ResponseCallback,
-  SourceTile,
-} from '@antv/l7-utils';
-import {
-  IBandsOperation,
-  IRasterFileData,
-  IRasterFormat,
-} from '../../interface';
+import type { ITileBand, RequestParameters, ResponseCallback, SourceTile } from '@antv/l7-utils';
+import { getArrayBuffer, makeXMLHttpRequestPromise } from '@antv/l7-utils';
+import type { IBandsOperation, IRasterFileData, IRasterFormat } from '../../interface';
 import { processRasterData } from '../bandOperation/bands';
 import { bindCancel, getTileBandParams } from './request';
 

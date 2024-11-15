@@ -1,11 +1,5 @@
-import container, {
-  createLayerContainer,
-  createSceneContainer,
-  lazyInject,
-  lazyMultiInject,
-} from './inversify.config';
 import BasePostProcessingPass from './services/renderer/passes/BasePostProcessingPass';
-import { TYPES } from './types';
+import { removeDuplicateUniforms } from './utils/shader-module';
 import { packCircleVertex } from './utils/vertex-compression';
 
 export * from './services/asset/IFontService';
@@ -26,6 +20,7 @@ export * from './services/layer/IStyleAttributeService';
 export * from './services/map/IMapService';
 export * from './services/renderer/gl';
 /** 全部渲染服务接口 */
+export * from './inversify.config';
 export * from './services/renderer/IAttribute';
 export * from './services/renderer/IBuffer';
 export * from './services/renderer/IElements';
@@ -39,19 +34,4 @@ export * from './services/renderer/IUniform';
 export * from './services/scene/ISceneService';
 export * from './services/shader/IShaderModuleService';
 export * from './services/source/ISourceService';
-export {
-  container,
-  createSceneContainer,
-  createLayerContainer,
-  /**
-   * lazy inject，供各个 Layer 使用
-   */
-  lazyInject,
-  lazyMultiInject,
-  /**
-   * 各个 Service 接口标识符
-   */
-  TYPES,
-  packCircleVertex,
-  BasePostProcessingPass,
-};
+export { BasePostProcessingPass, packCircleVertex, removeDuplicateUniforms };

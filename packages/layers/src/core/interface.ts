@@ -1,22 +1,16 @@
-import {
+import type {
   IAnimateOption,
   IMapService,
   ITexture2D,
   StyleAttributeField,
   StyleAttributeOption,
 } from '@antv/l7-core';
-import { IColorRamp } from '@antv/l7-utils';
-import { anchorType } from '../utils/symbol-layout';
+import type { IColorRamp } from '@antv/l7-utils';
+import type { CanvasModelType } from '../canvas/models';
+import type { anchorType } from '../utils/symbol-layout';
 export enum lineStyleType {
   'solid' = 0.0,
   'dash' = 1.0,
-}
-
-interface ILineArrow {
-  enable: boolean;
-  arrowWidth: number;
-  arrowHeight: number;
-  tailWidth: number;
 }
 
 export enum LinearDir {
@@ -28,7 +22,6 @@ export enum TextureBlend {
   NORMAL = 'normal',
   REPLACE = 'replace',
 }
-
 /**
  * 基础图层类型定义
  */
@@ -47,7 +40,6 @@ export interface IBaseLayerStyleOptions {
   mask?: boolean; // 可选参数 时候允许蒙层
   maskInside?: boolean; // 可选参数 控制图层是否显示在蒙层的内部
 
-  usage?: string;
   color?: string;
   size?: number;
 }
@@ -78,9 +70,12 @@ export interface ILineLayerStyleOptions extends IBaseLayerStyleOptions {
   borderWidth?: number; // 可选参数 线边框宽度
   borderColor?: string; // 可选参数 线边框颜色
 
+  strokeWidth?: number; // 可选参数 线边框宽度
+  storke?: string; // 可选参数 线边框颜色
+
   blur?: [number, number, number]; // 配置线图层的 blur 分布
 
-  arrow?: ILineArrow;
+  symbol?: ILineSymbol;
 
   rampColors?: IColorRamp;
   featureId?: string;
@@ -101,6 +96,7 @@ export interface IPointLayerStyleOptions extends IBaseLayerStyleOptions {
   stroke: string;
 
   blur?: number;
+  billboard?: boolean; // 图片符号地图支持
 
   // text
   textOffset?: [number, number];
@@ -112,7 +108,6 @@ export interface IPointLayerStyleOptions extends IBaseLayerStyleOptions {
   fontWeight?: string;
   fontFamily?: string;
   textAllowOverlap?: boolean;
-
   // cylinder
   pickLight?: boolean;
 
@@ -163,6 +158,11 @@ export interface IPolygonLayerStyleOptions extends IBaseLayerStyleOptions {
   sourceLayer?: string;
 }
 
+export interface IPolygonExtrusionStyleOptions {
+  opacity: number;
+  extrusionBase: number;
+}
+
 // 栅格瓦片图层
 export interface IRasterTileLayerStyleOptions extends IBaseLayerStyleOptions {
   // define
@@ -198,6 +198,10 @@ export interface IImageLayerStyleOptions extends IBaseLayerStyleOptions {
   clampHigh?: boolean;
   rampColors?: IColorRamp;
   colorTexture?: ITexture2D;
+  brightness?: number;
+  contrast?: number;
+  saturation?: number;
+  gamma?: number;
 }
 
 export interface ICityBuildLayerStyleOptions {
@@ -259,10 +263,38 @@ export interface IDrawingOnCanvas {
   mapService: IMapService;
   size: [number, number];
 }
-export interface ICanvasLayerStyleOptions {
-  zIndex: number;
-  update: CanvasUpdateType | string;
-  drawingOnCanvas: (option: IDrawingOnCanvas) => void;
+
+export interface ICanvasLayerRenderParams {
+  canvas: HTMLCanvasElement;
+  ctx: RenderingContext;
+  container: {
+    width: number;
+    height: number;
+    bounds: [[number, number], [number, number]];
+  };
+  size: [number, number];
+  utils: {
+    lngLatToContainer: IMapService['lngLatToContainer'];
+  };
+  mapService: IMapService;
+}
+
+export interface ICanvasLayerOptions {
+  zIndex?: number;
+  contextType?: CanvasModelType;
+  getContext?: (canvas: HTMLCanvasElement) => RenderingContext;
+  trigger?: 'end' | 'change';
+  /**
+   * @deprecated
+   * @alias trigger
+   */
+  update?: CanvasUpdateType | string;
+  draw?: (renderParams: ICanvasLayerRenderParams) => void;
+  /**
+   * @deprecated
+   * @alias draw
+   */
+  drawingOnCanvas?: (renderParams: ICanvasLayerRenderParams) => void;
 }
 
 export interface IHeatMapLayerStyleOptions extends IBaseLayerStyleOptions {
@@ -287,20 +319,37 @@ export interface IRasterLayerStyleOptions extends IBaseRasterLayerStyleOptions {
   channelBMax?: number;
 }
 
-export interface IRasterTerrainLayerStyleOptions
-  extends IBaseRasterLayerStyleOptions {
+export interface IRasterTerrainLayerStyleOptions extends IBaseRasterLayerStyleOptions {
   rScaler?: number;
   gScaler?: number;
   bScaler?: number;
   offset?: number;
 }
-
+export type ArrowType =
+  | 'circle'
+  | 'triangle'
+  | 'rect'
+  | 'diamond'
+  | 'classic'
+  | 'halfTriangle'
+  | 'none';
+export interface IArrowOptions {
+  type: ArrowType;
+  width?: number;
+  height?: number;
+  radius?: number;
+}
+export interface ILineSymbol {
+  source: ArrowType | IArrowOptions;
+  target: ArrowType | IArrowOptions;
+}
 export interface IFlowLineStyleOptions extends IBaseLayerStyleOptions {
   gapWidth?: number;
   offsets?: [number, number];
   stroke?: string;
   strokeOpacity?: number;
   strokeWidth?: number;
+  symbol?: ILineSymbol;
 }
 
 export interface IStyleEncodeAttributeOptions {

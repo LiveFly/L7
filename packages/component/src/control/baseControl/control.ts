@@ -1,4 +1,4 @@
-import {
+import type {
   IControl,
   IControlService,
   IGlobalConfigService,
@@ -6,14 +6,13 @@ import {
   IMapService,
   IRendererService,
   ISceneService,
+  L7Container,
   PositionName,
-  PositionType,
-  TYPES,
 } from '@antv/l7-core';
+import { PositionType } from '@antv/l7-core';
 import { DOM } from '@antv/l7-utils';
 import EventEmitter from 'eventemitter3';
-import { Container } from 'inversify';
-import { ControlEvent } from '../../interface';
+import type { ControlEvent } from '../../interface';
 
 export { PositionType } from '@antv/l7-core';
 export { Control };
@@ -52,7 +51,7 @@ export default class Control<O extends IControlOption = IControlOption>
    */
   protected isShow: boolean;
 
-  protected sceneContainer: Container;
+  protected sceneContainer: L7Container;
   protected scene: ISceneService;
   protected mapsService: IMapService;
   protected renderService: IRendererService;
@@ -79,13 +78,11 @@ export default class Control<O extends IControlOption = IControlOption>
    */
   public setOptions(newOptions: Partial<O>): void {
     const defaultOptions = this.getDefault(newOptions);
-    (Object.entries(newOptions) as Array<[keyof O, any]>).forEach(
-      ([key, value]) => {
-        if (value === undefined) {
-          newOptions[key] = defaultOptions[key];
-        }
-      },
-    );
+    (Object.entries(newOptions) as Array<[keyof O, any]>).forEach(([key, value]) => {
+      if (value === undefined) {
+        newOptions[key] = defaultOptions[key];
+      }
+    });
     if ('position' in newOptions) {
       this.setPosition(newOptions.position);
     }
@@ -105,20 +102,14 @@ export default class Control<O extends IControlOption = IControlOption>
    * 当 Control 被添加至 Scene 中，被 controlService 调用的方法
    * @param sceneContainer
    */
-  public addTo(sceneContainer: Container) {
+  public addTo(sceneContainer: L7Container) {
     // 初始化各个 Service 实例
-    this.mapsService = sceneContainer.get<IMapService>(TYPES.IMapService);
-    this.renderService = sceneContainer.get<IRendererService>(
-      TYPES.IRendererService,
-    );
-    this.layerService = sceneContainer.get<ILayerService>(TYPES.ILayerService);
-    this.controlService = sceneContainer.get<IControlService>(
-      TYPES.IControlService,
-    );
-    this.configService = sceneContainer.get<IGlobalConfigService>(
-      TYPES.IGlobalConfigService,
-    );
-    this.scene = sceneContainer.get<ISceneService>(TYPES.ISceneService);
+    this.mapsService = sceneContainer.mapService;
+    this.renderService = sceneContainer.rendererService;
+    this.layerService = sceneContainer.layerService;
+    this.controlService = sceneContainer.controlService;
+    this.configService = sceneContainer.globalConfigService;
+    this.scene = sceneContainer.sceneService;
     this.sceneContainer = sceneContainer;
     this.isShow = true;
 
@@ -224,9 +215,7 @@ export default class Control<O extends IControlOption = IControlOption>
    * 设置当前控件位置
    * @param position
    */
-  public setPosition(
-    position: PositionType | IControlOption['position'] = PositionType.TOPLEFT,
-  ) {
+  public setPosition(position: PositionType | IControlOption['position'] = PositionType.TOPLEFT) {
     // 考虑组件的自动布局，需要销毁重建
     const controlService = this.controlService;
     if (controlService) {
@@ -279,11 +268,7 @@ export default class Control<O extends IControlOption = IControlOption>
       position.appendChild(container);
     } else {
       const corner = this.controlService.controlCorners[position];
-      if (
-        ['bottomleft', 'bottomright', 'righttop', 'rightbottom'].includes(
-          position,
-        )
-      ) {
+      if (['bottomleft', 'bottomright', 'righttop', 'rightbottom'].includes(position)) {
         corner.insertBefore(container, corner.firstChild);
       } else {
         corner.appendChild(container);

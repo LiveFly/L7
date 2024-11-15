@@ -1,5 +1,6 @@
-import { gl, IElements, IElementsInitializationOptions } from '@antv/l7-core';
-import regl from 'l7regl';
+import type { IElements, IElementsInitializationOptions } from '@antv/l7-core';
+import { gl } from '@antv/l7-core';
+import type regl from 'regl';
 import { dataTypeMap, usageMap } from './constants';
 
 /**
@@ -13,10 +14,7 @@ export default class ReglElements implements IElements {
     this.elements = reGl.elements({
       data,
       usage: usageMap[usage || gl.STATIC_DRAW],
-      type: dataTypeMap[type || gl.UNSIGNED_BYTE] as
-        | 'uint8'
-        | 'uint16'
-        | 'uint32',
+      type: dataTypeMap[type || gl.UNSIGNED_BYTE] as 'uint8' | 'uint16' | 'uint32',
       count,
     });
   }

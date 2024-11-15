@@ -1,11 +1,12 @@
-import { IEncodeFeature } from '@antv/l7-core';
+import type { IEncodeFeature } from '@antv/l7-core';
 import BaseLayer from '../core/BaseLayer';
-import { IPointLayerStyleOptions } from '../core/interface';
-import PointModels, { PointType } from './models/index';
+import type { IPointLayerStyleOptions } from '../core/interface';
+import type { PointType } from './models/index';
+import PointModels from './models/index';
 
 export default class PointLayer extends BaseLayer<IPointLayerStyleOptions> {
   public type: string = 'PointLayer';
-  public enableShaderEncodeStyles = ['opacity', 'offsets', 'stroke'];
+  public enableShaderEncodeStyles = ['stroke', 'offsets', 'opacity', 'rotation']; //4+2+1+1
   public enableDataEncodeStyles = ['textOffset', 'textAnchor'];
   public defaultSourceConfig = {
     data: [],
@@ -85,7 +86,7 @@ export default class PointLayer extends BaseLayer<IPointLayerStyleOptions> {
   public getModelType(): PointType {
     //  2D、 3d、 shape、image、text、normal、
     const layerData = this.getEncodedData();
-    const { shape2d, shape3d } = this.getLayerConfig();
+    const { shape2d, shape3d, billboard = true } = this.getLayerConfig();
     const iconMap = this.iconService.getIconMap();
     const item = layerData.find((fe: IEncodeFeature) => {
       return fe.hasOwnProperty('shape');
@@ -103,7 +104,7 @@ export default class PointLayer extends BaseLayer<IPointLayerStyleOptions> {
       if (shape === 'radar') {
         return 'radar';
       }
-      if (this.layerType === 'fillImage') {
+      if (this.layerType === 'fillImage' || billboard === false) {
         return 'fillImage';
       }
       if (shape2d?.indexOf(shape as string) !== -1) {

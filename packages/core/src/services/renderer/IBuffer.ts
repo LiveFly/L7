@@ -1,13 +1,7 @@
-import { gl } from './gl';
+import type { gl } from './gl';
 
 export interface IBufferInitializationOptions {
-  data:
-    | number[]
-    | number[][]
-    | Uint8Array
-    | Uint16Array
-    | Uint32Array
-    | Float32Array;
+  data: number[] | number[][] | Uint8Array | Uint16Array | Uint32Array | Float32Array;
 
   /**
    * gl.DRAW_STATIC | gl.DYNAMIC_DRAW | gl.STREAM_DRAW
@@ -19,6 +13,16 @@ export interface IBufferInitializationOptions {
    */
   type?: gl.FLOAT | gl.UNSIGNED_BYTE;
   length?: number;
+
+  /**
+   * UniformBuffer
+   */
+  isUBO?: boolean;
+
+  /**
+   * Used later in Spector.js.
+   */
+  label?: string;
 }
 
 export interface IBuffer {

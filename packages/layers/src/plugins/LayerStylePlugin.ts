@@ -1,10 +1,7 @@
-import { ILayer, ILayerPlugin } from '@antv/l7-core';
-import { injectable } from 'inversify';
-import 'reflect-metadata';
+import type { ILayer, ILayerPlugin } from '@antv/l7-core';
 /**
  * 更新图层样式，初始图层相关配置
  */
-@injectable()
 export default class LayerStylePlugin implements ILayerPlugin {
   public apply(layer: ILayer) {
     layer.hooks.afterInit.tap('LayerStylePlugin', () => {

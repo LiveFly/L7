@@ -1,4 +1,4 @@
-import { ILngLat } from '../map/IMapService';
+import type { ILngLat } from '../map/IMapService';
 export enum InteractionEvent {
   Hover = 'hover',
   Click = 'click',
@@ -19,10 +19,7 @@ export interface IInteractionService {
   indragging: boolean;
   init(): void;
   destroy(): void;
-  on(
-    eventName: InteractionEvent,
-    callback: (params: IInteractionTarget) => void,
-  ): void;
+  on(eventName: InteractionEvent, callback: (params: IInteractionTarget) => void): void;
   triggerHover({ x, y, type }: Partial<IInteractionTarget>): void;
   triggerSelect(id: number): void;
   triggerActive(id: number): void;

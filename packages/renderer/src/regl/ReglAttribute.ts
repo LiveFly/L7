@@ -1,10 +1,6 @@
-import {
-  IAttribute,
-  IAttributeInitializationOptions,
-  IBuffer,
-} from '@antv/l7-core';
-import regl from 'l7regl';
-import ReglBuffer from './ReglBuffer';
+import type { IAttribute, IAttributeInitializationOptions, IBuffer } from '@antv/l7-core';
+import type regl from 'regl';
+import type ReglBuffer from './ReglBuffer';
 
 /**
  * @see https://github.com/regl-project/regl/blob/gh-pages/API.md#attributes

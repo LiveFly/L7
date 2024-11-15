@@ -1,12 +1,20 @@
-import { IEncodeFeature } from '@antv/l7-core';
+import type { IEncodeFeature } from '@antv/l7-core';
 import BaseLayer from '../core/BaseLayer';
-import { IPolygonLayerStyleOptions } from '../core/interface';
-import PolygonModels, { PolygonModelType } from './models/';
+import type { IPolygonLayerStyleOptions } from '../core/interface';
+import type { PolygonModelType } from './models/';
+import PolygonModels from './models/';
 
 export default class PolygonLayer extends BaseLayer<IPolygonLayerStyleOptions> {
   public type: string = 'PolygonLayer';
-  public enableShaderEncodeStyles = ['opacity'];
-  public defaultSourceConfig: {
+  public enableShaderEncodeStyles = [
+    'opacity',
+    'extrusionBase',
+    // shape 为文本时
+    'rotation',
+    'offsets',
+    'stroke',
+  ];
+  public declare defaultSourceConfig: {
     data: [];
     options: {
       parser: {
@@ -21,13 +29,14 @@ export default class PolygonLayer extends BaseLayer<IPolygonLayerStyleOptions> {
   }
 
   public getModelType(): PolygonModelType {
-    const shapeAttribute =
-      this.styleAttributeService.getLayerStyleAttribute('shape');
+    const shapeAttribute = this.styleAttributeService.getLayerStyleAttribute('shape');
     const shape = shapeAttribute?.scale?.field as PolygonModelType;
     if (shape === 'fill' || !shape) {
       return 'fill';
     } else if (shape === 'extrude') {
       return 'extrude';
+    } else if (shape === 'extrusion') {
+      return 'extrusion';
     } else if (shape === 'water') {
       return 'water';
     } else if (shape === 'ocean') {

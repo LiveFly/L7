@@ -1,12 +1,9 @@
-import { Container, injectable } from 'inversify';
-import 'reflect-metadata';
-import { TYPES } from '../../types';
-import { IMapService } from '../map/IMapService';
-import { IPopup, IPopupService } from './IPopupService';
+import type { L7Container } from '../../inversify.config';
+import type { IMapService } from '../map/IMapService';
+import type { IPopup, IPopupService } from './IPopupService';
 
-@injectable()
 export default class PopupService implements IPopupService {
-  private scene: Container;
+  private scene: L7Container;
   private mapsService: IMapService;
   private popups: IPopup[] = [];
   private unAddPopups: IPopup[] = [];
@@ -64,8 +61,8 @@ export default class PopupService implements IPopupService {
     }
   }
 
-  public init(scene: Container) {
+  public init(scene: L7Container) {
     this.scene = scene;
-    this.mapsService = scene.get<IMapService>(TYPES.IMapService);
+    this.mapsService = scene.mapService;
   }
 }

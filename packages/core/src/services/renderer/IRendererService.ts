@@ -1,13 +1,10 @@
-import { IAttribute, IAttributeInitializationOptions } from './IAttribute';
-import { IBuffer, IBufferInitializationOptions } from './IBuffer';
-import { IElements, IElementsInitializationOptions } from './IElements';
-import {
-  IFramebuffer,
-  IFramebufferInitializationOptions,
-} from './IFramebuffer';
-import { IModel, IModelInitializationOptions } from './IModel';
-import { IPass } from './IMultiPassRenderer';
-import { ITexture2D, ITexture2DInitializationOptions } from './ITexture2D';
+import type { IAttribute, IAttributeInitializationOptions } from './IAttribute';
+import type { IBuffer, IBufferInitializationOptions } from './IBuffer';
+import type { IElements, IElementsInitializationOptions } from './IElements';
+import type { IFramebuffer, IFramebufferInitializationOptions } from './IFramebuffer';
+import type { IModel, IModelInitializationOptions } from './IModel';
+import type { IPass } from './IMultiPassRenderer';
+import type { ITexture2D, ITexture2DInitializationOptions } from './ITexture2D';
 
 export interface IRenderConfig {
   /**
@@ -19,6 +16,14 @@ export interface IRenderConfig {
   preserveDrawingBuffer?: boolean;
   // Tip: 场景是否支持 stencil mask
   stencil?: boolean;
+  /**
+   * Whether to use WebGPU Device.
+   */
+  enableWebGPU?: boolean;
+  /**
+   * Path of WASM shader compiler.
+   */
+  shaderCompilerPath?: string;
 }
 
 export interface IClearOptions {
@@ -47,6 +52,7 @@ export interface IExtensions {
 }
 
 export interface IRendererService {
+  uniformBuffers: IBuffer[];
   extensionObject: IExtensions;
   init(canvas: HTMLCanvasElement, cfg: IRenderConfig, gl: any): Promise<void>;
   testExtension(name: string): boolean;
@@ -57,10 +63,11 @@ export interface IRendererService {
   createElements(options: IElementsInitializationOptions): IElements;
   createTexture2D(options: ITexture2DInitializationOptions): ITexture2D;
   createFramebuffer(options: IFramebufferInitializationOptions): IFramebuffer;
-  useFramebuffer(
+  useFramebuffer(framebuffer: IFramebuffer | null, drawCommands: () => void): void;
+  useFramebufferAsync(
     framebuffer: IFramebuffer | null,
-    drawCommands: () => void,
-  ): void;
+    drawCommands: () => Promise<void>,
+  ): Promise<void>;
   getViewportSize(): { width: number; height: number };
   getContainer(): HTMLElement | null;
   getCanvas(): HTMLCanvasElement | null;
@@ -68,10 +75,14 @@ export interface IRendererService {
   getPointSizeRange(): Float32Array;
   viewport(size: { x: number; y: number; width: number; height: number }): void;
   readPixels(options: IReadPixelsOptions): Uint8Array;
+  readPixelsAsync(options: IReadPixelsOptions): Promise<Uint8Array>;
   setState(): void;
   setBaseState(): void;
   setCustomLayerDefaults(): void;
   setDirty(flag: boolean): void;
   getDirty(): boolean;
   destroy(): void;
+  beginFrame(): void;
+  endFrame(): void;
+  queryVerdorInfo(): string;
 }

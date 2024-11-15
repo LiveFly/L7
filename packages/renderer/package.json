@@ -1,44 +1,37 @@
 {
   "name": "@antv/l7-renderer",
-  "version": "2.17.10",
+  "version": "2.22.3",
   "description": "",
+  "license": "MIT",
+  "author": "https://github.com/orgs/antvis/people",
+  "sideEffects": false,
   "main": "lib/index.js",
   "module": "es/index.js",
   "types": "es/index.d.ts",
-  "sideEffects": false,
   "files": [
     "lib",
-    "es",
-    "README.md"
+    "es"
   ],
   "scripts": {
-    "tsc": "tsc --project tsconfig.build.json",
-    "clean": "rimraf dist; rimraf es; rimraf lib;",
-    "build": "father build",
-    "build:cjs": "BABEL_ENV=cjs babel src --root-mode upward --out-dir lib --source-maps --extensions .ts,.tsx --delete-dir-on-start --no-comments",
-    "build:esm": "BABEL_ENV=esm babel src --root-mode upward --out-dir es --source-maps --extensions .ts,.tsx --delete-dir-on-start --no-comments",
-    "watch": "BABEL_ENV=cjs babel src --watch --root-mode upward --out-dir lib --source-maps --extensions .ts,.tsx --delete-dir-on-start --no-comments",
-    "sync": "tnpm sync",
-    "test": "umi-test --passWithNoTests",
-    "test-live": "umi-test --watch"
-  },
-  "author": "xiaoiver",
-  "license": "ISC",
-  "devDependencies": {
-    "@antv/l7-test-utils": "2.17.10",
-    "gl": "^5.0.3"
+    "dev": "father dev",
+    "build": "npm run clean && father build",
+    "check-deps": "father doctor",
+    "lint": "eslint src __tests__",
+    "clean": "rimraf dist es lib"
   },
   "dependencies": {
-    "@antv/l7-core": "2.17.10",
-    "@antv/l7-utils": "2.17.10",
+    "@antv/g-device-api": "^1.6.4",
+    "@antv/l7-core": "workspace:*",
+    "@antv/l7-utils": "workspace:*",
     "@babel/runtime": "^7.7.7",
-    "inversify": "^5.0.1",
-    "l7regl": "^0.0.20",
-    "lodash": "^4.17.15",
-    "reflect-metadata": "^0.1.13"
+    "regl": "1.6.1"
   },
-  "gitHead": "684ba4eb806a798713496d3fc0b4d1e17517dc31",
+  "devDependencies": {
+    "@antv/l7-test-utils": "workspace:^"
+  },
   "publishConfig": {
-    "access": "public"
-  }
+    "access": "public",
+    "registry": "https://registry.npmjs.org"
+  },
+  "repository": "git@github.com:antvis/L7.git"
 }

@@ -2,7 +2,7 @@
  * render w/ regl
  * @see https://github.com/regl-project/regl/blob/gh-pages/API.md
  */
-import {
+import type {
   IAttribute,
   IAttributeInitializationOptions,
   IBuffer,
@@ -21,10 +21,7 @@ import {
   ITexture2D,
   ITexture2DInitializationOptions,
 } from '@antv/l7-core';
-import { isMini } from '@antv/l7-utils';
-import { injectable } from 'inversify';
-import regl from 'l7regl';
-import 'reflect-metadata';
+import regl from 'regl';
 import ReglAttribute from './ReglAttribute';
 import ReglBuffer from './ReglBuffer';
 import ReglElements from './ReglElements';
@@ -35,8 +32,8 @@ import ReglTexture2D from './ReglTexture2D';
 /**
  * regl renderer
  */
-@injectable()
 export default class ReglRendererService implements IRendererService {
+  uniformBuffers: IBuffer[] = [];
   public extensionObject: IExtensions;
   private gl: regl.Regl;
   private $container: HTMLDivElement | null;
@@ -45,11 +42,11 @@ export default class ReglRendererService implements IRendererService {
   private height: number;
   private isDirty: boolean;
 
-  public async init(
-    canvas: HTMLCanvasElement,
-    cfg: IRenderConfig,
-    gl?: regl.Regl,
-  ): Promise<void> {
+  queryVerdorInfo = () => {
+    return 'WebGL1';
+  };
+
+  public async init(canvas: HTMLCanvasElement, cfg: IRenderConfig, gl?: regl.Regl): Promise<void> {
     // this.$container = $container;
     this.canvas = canvas;
     if (gl) {
@@ -112,27 +109,30 @@ export default class ReglRendererService implements IRendererService {
   public createModel = (options: IModelInitializationOptions): IModel =>
     new ReglModel(this.gl, options);
 
-  public createAttribute = (
-    options: IAttributeInitializationOptions,
-  ): IAttribute => new ReglAttribute(this.gl, options);
+  public createAttribute = (options: IAttributeInitializationOptions): IAttribute =>
+    new ReglAttribute(this.gl, options);
 
   public createBuffer = (options: IBufferInitializationOptions): IBuffer =>
     new ReglBuffer(this.gl, options);
 
-  public createElements = (
-    options: IElementsInitializationOptions,
-  ): IElements => new ReglElements(this.gl, options);
+  public createElements = (options: IElementsInitializationOptions): IElements =>
+    new ReglElements(this.gl, options);
 
-  public createTexture2D = (
-    options: ITexture2DInitializationOptions,
-  ): ITexture2D => new ReglTexture2D(this.gl, options);
+  public createTexture2D = (options: ITexture2DInitializationOptions): ITexture2D =>
+    new ReglTexture2D(this.gl, options);
 
   public createFramebuffer = (options: IFramebufferInitializationOptions) =>
     new ReglFramebuffer(this.gl, options);
 
-  public useFramebuffer = (
+  public useFramebuffer = (framebuffer: IFramebuffer | null, drawCommands: () => void) => {
+    this.gl({
+      framebuffer: framebuffer ? (framebuffer as ReglFramebuffer).get() : null,
+    })(drawCommands);
+  };
+
+  public useFramebufferAsync = async (
     framebuffer: IFramebuffer | null,
-    drawCommands: () => void,
+    drawCommands: () => Promise<void>,
   ) => {
     this.gl({
       framebuffer: framebuffer ? (framebuffer as ReglFramebuffer).get() : null,
@@ -149,9 +149,7 @@ export default class ReglRendererService implements IRendererService {
     };
 
     reglClearOptions.framebuffer =
-      framebuffer === null
-        ? framebuffer
-        : (framebuffer as ReglFramebuffer).get();
+      framebuffer === null ? framebuffer : (framebuffer as ReglFramebuffer).get();
 
     this.gl?.clear(reglClearOptions);
   };
@@ -189,6 +187,10 @@ export default class ReglRendererService implements IRendererService {
     return this.gl.read(readPixelsOptions);
   };
 
+  public readPixelsAsync = async (options: IReadPixelsOptions) => {
+    return this.readPixels(options);
+  };
+
   public getViewportSize = () => {
     return {
       width: this.gl._gl.drawingBufferWidth,
@@ -197,11 +199,7 @@ export default class ReglRendererService implements IRendererService {
   };
 
   public getContainer = () => {
-    if (isMini) {
-      return this.canvas;
-    } else {
-      return this.canvas?.parentElement;
-    }
+    return this.canvas?.parentElement;
   };
 
   public getCanvas = () => {
@@ -282,4 +280,7 @@ export default class ReglRendererService implements IRendererService {
     // @ts-ignore
     this.gl = null;
   };
+
+  beginFrame(): void {}
+  endFrame(): void {}
 }

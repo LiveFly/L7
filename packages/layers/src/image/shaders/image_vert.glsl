@@ -1,17 +1,20 @@
-precision highp float;
-uniform mat4 u_ModelMatrix;
-uniform mat4 u_Mvp;
-attribute vec3 a_Position;
-attribute vec2 a_Uv;
-varying vec2 v_texCoord;
+layout(location = ATTRIBUTE_LOCATION_POSITION) in vec3 a_Position;
+layout(location = ATTRIBUTE_LOCATION_POSITION_64LOW) in vec2 a_Position64Low;
+layout(location = ATTRIBUTE_LOCATION_UV) in vec2 a_Uv;
+
+layout(std140) uniform commonUniforms {
+    float u_opacity:1.0;
+    float u_brightness:1.0;
+    float u_contrast:1.0;
+    float u_saturation:1.0;
+    float u_gamma:1.0;
+};
+
+out vec2 v_texCoord;
 #pragma include "projection"
+
 void main() {
-   v_texCoord = a_Uv;
-   vec4 project_pos = project_position(vec4(a_Position, 1.0));
-   // gl_Position = project_common_position_to_clipspace(vec4(project_pos.xy,0., 1.0));
-   if(u_CoordinateSystem == COORDINATE_SYSTEM_P20_2) { // gaode2.x
-      gl_Position = u_Mvp * (vec4(project_pos.xy,0., 1.0));
-   } else {
-      gl_Position = project_common_position_to_clipspace(vec4(project_pos.xy,0., 1.0));
-   }
+  v_texCoord = a_Uv;
+  vec4 project_pos = project_position(vec4(a_Position, 1.0), a_Position64Low);
+  gl_Position = project_common_position_to_clipspace(vec4(project_pos.xy, 0.0, 1.0));
 }

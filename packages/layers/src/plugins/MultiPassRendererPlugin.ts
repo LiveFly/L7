@@ -1,12 +1,10 @@
-import {
+import type {
   ILayer,
   ILayerPlugin,
   IPass,
   IPostProcessingPass,
   IRendererService,
 } from '@antv/l7-core';
-import { injectable } from 'inversify';
-import 'reflect-metadata';
 import { createMultiPassRenderer } from '../utils/multiPassRender';
 
 /**
@@ -22,7 +20,6 @@ import { createMultiPassRenderer } from '../utils/multiPassRender';
  *   ],
  * })
  */
-@injectable()
 export default class MultiPassRendererPlugin implements ILayerPlugin {
   private enabled: boolean;
 
@@ -43,8 +40,7 @@ export default class MultiPassRendererPlugin implements ILayerPlugin {
 
       // SceneConfig 的 enableMultiPassRenderer 配置项可以统一关闭
       this.enabled =
-        !!enableMultiPassRenderer &&
-        layer.getLayerConfig().enableMultiPassRenderer !== false;
+        !!enableMultiPassRenderer && layer.getLayerConfig().enableMultiPassRenderer !== false;
 
       // 根据 LayerConfig passes 配置项初始化
       if (this.enabled) {

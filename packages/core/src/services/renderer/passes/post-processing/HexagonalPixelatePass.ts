@@ -1,5 +1,3 @@
-import { injectable } from 'inversify';
-import 'reflect-metadata';
 import hexagonalPixelate from '../../../../shaders/post-processing/hexagonalpixelate.glsl';
 import quad from '../../../../shaders/post-processing/quad.glsl';
 import BasePostProcessingPass from '../BasePostProcessingPass';
@@ -9,7 +7,6 @@ export interface IHexagonalPixelatePassConfig {
   scale: number;
 }
 
-@injectable()
 export default class HexagonalPixelatePass extends BasePostProcessingPass<IHexagonalPixelatePassConfig> {
   protected setupShaders() {
     this.shaderModuleService.registerModule('hexagonalpixelate-pass', {
@@ -17,9 +14,7 @@ export default class HexagonalPixelatePass extends BasePostProcessingPass<IHexag
       fs: hexagonalPixelate,
     });
 
-    const { vs, fs, uniforms } = this.shaderModuleService.getModule(
-      'hexagonalpixelate-pass',
-    );
+    const { vs, fs, uniforms } = this.shaderModuleService.getModule('hexagonalpixelate-pass');
     const { width, height } = this.rendererService.getViewportSize();
 
     return {

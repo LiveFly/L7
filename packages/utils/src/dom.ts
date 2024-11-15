@@ -1,19 +1,14 @@
-import { pull } from 'lodash';
-import { $window } from './mini-adapter';
+import { lodashUtil } from './lodash-adapter';
+const { pull } = lodashUtil;
 
 export type ELType = HTMLElement | SVGElement;
 
-export type ElementType =
-  | HTMLElement
-  | HTMLElement[]
-  | DocumentFragment
-  | Text
-  | string;
+export type ElementType = HTMLElement | HTMLElement[] | DocumentFragment | Text | string;
 
 export function getContainer(domId: string | HTMLDivElement) {
   let $dom = domId as HTMLDivElement;
   if (typeof domId === 'string') {
-    $dom = $window.document.getElementById(domId) as HTMLDivElement;
+    $dom = window.document.getElementById(domId) as HTMLDivElement;
   }
   return $dom;
 }
@@ -29,7 +24,7 @@ export function splitWords(str: string) {
 }
 
 function testProp(props: string[]): string {
-  const docStyle = $window?.document?.documentElement?.style;
+  const docStyle = document?.documentElement?.style;
   if (!docStyle) {
     return props[0];
   }
@@ -41,12 +36,8 @@ function testProp(props: string[]): string {
 
   return props[0];
 }
-export function create(
-  tagName: string,
-  className?: string,
-  container?: HTMLElement,
-) {
-  const el = $window.document.createElement(tagName);
+export function create(tagName: string, className?: string, container?: HTMLElement) {
+  const el = window.document.createElement(tagName);
   if (className) {
     el.className = className || '';
   }
@@ -88,10 +79,7 @@ export function removeClass(el: ELType, name: string) {
       el.classList.remove(className);
     });
   } else {
-    setClass(
-      el,
-      trim((' ' + getClass(el) + ' ').replace(' ' + name + ' ', ' ')),
-    );
+    setClass(el, trim((' ' + getClass(el) + ' ').replace(' ' + name + ' ', ' ')));
   }
 }
 
@@ -102,10 +90,7 @@ export function hasClass(el: ELType, name: string) {
     return el.classList.contains(name);
   }
   const className = getClass(el);
-  return (
-    className.length > 0 &&
-    new RegExp('(^|\\s)' + name + '(\\s|$)').test(className)
-  );
+  return className.length > 0 && new RegExp('(^|\\s)' + name + '(\\s|$)').test(className);
 }
 
 // @function setClass(el: HTMLElement, name: String)
@@ -119,6 +104,27 @@ export function setClass(el: ELType, name: string) {
   }
 }
 
+/**
+ * Toggles a class for a given DOM element.
+ *
+ * @param el - The DOM element to toggle the class for.
+ * @param className - The name of the class to toggle.
+ * @param force - Optional. If true, adds the class. If false, removes the class. If undefined, toggles the class.
+ */
+export function toggleClass(el: ELType, className: string, force?: boolean): void {
+  if (force === undefined) {
+    if (hasClass(el, className)) {
+      removeClass(el, className);
+    } else {
+      addClass(el, className);
+    }
+  } else if (force) {
+    addClass(el, className);
+  } else {
+    removeClass(el, className);
+  }
+}
+
 // @function getClass(el: HTMLElement): String
 // Returns the element's class.
 export function getClass(el: ELType) {
@@ -128,9 +134,7 @@ export function getClass(el: ELType) {
     // @ts-ignore
     el = el.correspondingElement;
   }
-  return el.className.baseVal === undefined
-    ? el.className
-    : el.className.baseVal;
+  return el.className.baseVal === undefined ? el.className : el.className.baseVal;
 }
 
 export function empty(el: ELType) {
@@ -149,14 +153,14 @@ export function setTransform(el: ELType, value: string) {
 export function triggerResize() {
   if (typeof Event === 'function') {
     // modern browsers
-    $window.dispatchEvent(new Event('resize'));
+    window.dispatchEvent(new Event('resize'));
   } else {
     // for IE and other old browsers
     // causes deprecation warning on modern browsers
-    const evt = $window.document.createEvent('UIEvents');
+    const evt = window.document.createEvent('UIEvents');
     // @ts-ignore
-    evt.initUIEvent('resize', true, false, $window, 0);
-    $window.dispatchEvent(evt);
+    evt.initUIEvent('resize', true, false, window, 0);
+    window.dispatchEvent(evt);
   }
 }
 
@@ -171,7 +175,7 @@ export function printCanvas(canvas: HTMLCanvasElement) {
 }
 
 export function getViewPortScale() {
-  const meta = $window.document.querySelector('meta[name="viewport"]');
+  const meta = window.document.querySelector('meta[name="viewport"]');
   if (!meta) {
     return 1;
   }
@@ -183,7 +187,7 @@ export function getViewPortScale() {
   return scale ? scale.split('=')[1] * 1 : 1;
 }
 
-export const DPR = getViewPortScale() < 1 ? 1 : $window.devicePixelRatio;
+export const DPR = getViewPortScale() < 1 ? 1 : window.devicePixelRatio;
 
 export function addStyle(el: ELType, style: string) {
   el.setAttribute('style', `${el.style.cssText}${style}`);
@@ -251,4 +255,16 @@ export function appendElementType(
   } else {
     container.append(children);
   }
+}
+
+export function findParentElement(target: HTMLElement, selector: string | string[]) {
+  const selectors = Array.isArray(selector) ? selector : [selector];
+  let current: Element | null = target;
+  while (current instanceof Element && current !== window.document.body) {
+    if (selectors.find((item) => current?.matches(item))) {
+      return current;
+    }
+    current = current?.parentElement ?? null;
+  }
+  return undefined;
 }

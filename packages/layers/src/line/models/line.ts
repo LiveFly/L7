@@ -1,47 +1,43 @@
-import {
-  AttributeType,
-  gl,
+import type {
   IAnimateOption,
   IEncodeFeature,
   ILayerConfig,
   IModel,
-  IModelUniform,
   ITexture2D,
 } from '@antv/l7-core';
-import { LineTriangulation, rgb2arr } from '@antv/l7-utils';
+import { AttributeType, gl } from '@antv/l7-core';
+import { rgb2arr } from '@antv/l7-utils';
 import BaseModel from '../../core/BaseModel';
-import {
-  ILineLayerStyleOptions,
-  LinearDir,
-  TextureBlend,
-} from '../../core/interface';
-// import { LineTriangulation } from '../../core/triangulation';
-// dash line shader
-import line_dash_frag from '../shaders/dash/line_dash_frag.glsl';
-import line_dash_vert from '../shaders/dash/line_dash_vert.glsl';
-// basic line shader
-import line_frag from '../shaders/line_frag.glsl';
-import line_vert from '../shaders/line_vert.glsl';
-// other function shaders
-import linear_line_frag from '../shaders/linear/line_linear_frag.glsl';
+import type { ILineLayerStyleOptions } from '../../core/interface';
+import { LinearDir, TextureBlend } from '../../core/interface';
+import { LineTriangulation } from '../../core/triangulation';
 
-const lineStyleObj: { [key: string]: number } = {
-  solid: 0.0,
-  dash: 1.0,
-};
+import line_frag from '../shaders/line/line_frag.glsl';
+import line_vert from '../shaders/line/line_vert.glsl';
+
 export default class LineModel extends BaseModel {
+  protected get attributeLocation() {
+    return Object.assign(super.attributeLocation, {
+      MAX: super.attributeLocation.MAX,
+      SIZE: 9,
+      DISTANCE_INDEX: 10,
+      NORMAL: 11,
+      UV: 12,
+    });
+  }
+
   private textureEventFlag: boolean = false;
   protected texture: ITexture2D = this.createTexture2D({
-    data: [0, 0, 0, 0],
-    mag: gl.NEAREST,
-    min: gl.NEAREST,
-    premultiplyAlpha: false,
+    data: new Uint8Array([0, 0, 0, 0]),
     width: 1,
     height: 1,
   });
-  public getUninforms(): IModelUniform {
+  protected getCommonUniformsInfo(): {
+    uniformsArray: number[];
+    uniformsLength: number;
+    uniformsOption: { [key: string]: any };
+  } {
     const {
-      // opacity = 1,
       sourceColor,
       targetColor,
       textureBlend = 'normal',
@@ -50,27 +46,23 @@ export default class LineModel extends BaseModel {
       lineTexture = false,
       iconStep = 100,
       vertexHeightScale = 20.0,
-      borderWidth = 0.0,
-      borderColor = '#ccc',
+      strokeWidth = 0.0,
       raisingHeight = 0,
       heightfixed = false,
       linearDir = LinearDir.VERTICAL, // 默认纵向
-      blur = [1, 1, 1],
-      arrow = {
-        enable: false,
-        arrowWidth: 2,
-        arrowHeight: 3,
-        tailWidth: 1,
-      },
+      blur = [1, 1, 1, 0],
     } = this.layer.getLayerConfig() as ILineLayerStyleOptions;
-    if (dashArray.length === 2) {
-      dashArray.push(0, 0);
+    let u_dash_array = dashArray;
+    if (lineType !== 'dash') {
+      u_dash_array = [0, 0, 0, 0];
     }
-
+    if (u_dash_array.length === 2) {
+      u_dash_array.push(0, 0);
+    }
     if (this.rendererService.getDirty() && this.texture) {
-      this.texture.bind();
+      this.texture?.bind();
     }
-
+    const { animateOption } = this.layer.getLayerConfig() as ILayerConfig;
     // 转化渐变色
     let useLinearColor = 0; // 默认不生效
     let sourceColorArr = [0, 0, 0, 0];
@@ -80,55 +72,40 @@ export default class LineModel extends BaseModel {
       targetColorArr = rgb2arr(targetColor);
       useLinearColor = 1;
     }
-
-    return {
-      // u_opacity: isNumber(opacity) ? opacity : 1,
-      u_textureBlend: textureBlend === TextureBlend.NORMAL ? 0.0 : 1.0,
-      u_line_type: lineStyleObj[lineType],
-      u_dash_array: dashArray,
-
+    const commonOptions = {
+      u_animate: this.animateOption2Array(animateOption as IAnimateOption),
+      u_dash_array,
       u_blur: blur,
-
-      // 纹理支持参数
-      u_texture: this.texture, // 贴图
-      u_line_texture: lineTexture ? 1.0 : 0.0, // 传入线的标识
-      u_icon_step: iconStep,
-      u_textSize: [1024, this.iconService.canvasHeight || 128],
-
-      // line border 参数
-      u_borderWidth: borderWidth,
-      u_borderColor: rgb2arr(borderColor),
-
-      // 渐变色支持参数
-      u_linearDir: linearDir === LinearDir.VERTICAL ? 1.0 : 0.0,
-      u_linearColor: useLinearColor,
       u_sourceColor: sourceColorArr,
       u_targetColor: targetColorArr,
-
+      u_textSize: [1024, this.iconService.canvasHeight || 128],
+      u_icon_step: iconStep,
       // 是否固定高度
       u_heightfixed: Number(heightfixed),
-
       // 顶点高度 scale
       u_vertexScale: vertexHeightScale,
       u_raisingHeight: Number(raisingHeight),
-
-      // arrow
-      u_arrow: Number(arrow.enable),
-      u_arrowHeight: arrow.arrowHeight || 3,
-      u_arrowWidth: arrow.arrowWidth || 2,
-      u_tailWidth: arrow.tailWidth === undefined ? 1 : arrow.tailWidth,
-      ...this.getStyleAttribute(),
+      // line border 参数
+      u_strokeWidth: strokeWidth,
+      u_textureBlend: textureBlend === TextureBlend.NORMAL ? 0.0 : 1.0,
+      u_line_texture: lineTexture ? 1.0 : 0.0, // 传入线的标识
+      u_linearDir: linearDir === LinearDir.VERTICAL ? 1.0 : 0.0,
+      u_linearColor: useLinearColor,
+      u_time: this.layer.getLayerAnimateTime() || 0,
     };
-  }
-  public getAnimateUniforms(): IModelUniform {
-    const { animateOption } = this.layer.getLayerConfig() as ILayerConfig;
-    return {
-      u_animate: this.animateOption2Array(animateOption as IAnimateOption),
-      u_time: this.layer.getLayerAnimateTime(),
-    };
-  }
 
+    const commonBufferInfo = this.getUniformsBufferInfo(commonOptions);
+    return commonBufferInfo;
+  }
+  // public getAnimateUniforms(): IModelUniform {
+  //   const { animateOption } = this.layer.getLayerConfig() as ILayerConfig;
+  //   return {
+  //     u_animate: this.animateOption2Array(animateOption as IAnimateOption),
+  //     u_time: this.layer.getLayerAnimateTime(),
+  //   };
+  // }
   public async initModels(): Promise<IModel[]> {
+    this.initUniformsBuffer();
     // this.updateTexture();
     // this.iconService.on('imageUpdate', this.updateTexture);
     if (!this.textureEventFlag) {
@@ -145,16 +122,15 @@ export default class LineModel extends BaseModel {
   }
 
   public async buildModels(): Promise<IModel[]> {
-    const { depth = false } =
-      this.layer.getLayerConfig() as ILineLayerStyleOptions;
+    const { depth = false } = this.layer.getLayerConfig() as ILineLayerStyleOptions;
     const { frag, vert, type } = this.getShaders();
-    // console.log(frag)
     this.layer.triangulation = LineTriangulation;
     const model = await this.layer.buildLayerModel({
       moduleName: 'line' + type,
       vertexShader: vert,
       fragmentShader: frag,
       triangulation: LineTriangulation,
+      defines: this.getDefines(),
       inject: this.getInject(),
       depth: { enable: depth },
     });
@@ -166,46 +142,30 @@ export default class LineModel extends BaseModel {
    * @returns
    */
   public getShaders(): { frag: string; vert: string; type: string } {
-    const { sourceColor, targetColor, lineType } =
-      this.layer.getLayerConfig() as ILineLayerStyleOptions;
-
-    if (lineType === 'dash') {
-      return {
-        frag: line_dash_frag,
-        vert: line_dash_vert,
-        type: 'Dash',
-      };
-    }
-
-    if (sourceColor && targetColor) {
-      // 分离 linear 功能
-      return {
-        frag: linear_line_frag,
-        vert: line_vert,
-        type: 'Linear',
-      };
-    } else {
-      return {
-        frag: line_frag,
-        vert: line_vert,
-        type: '',
-      };
-    }
+    return {
+      frag: line_frag,
+      vert: line_vert,
+      type: '',
+    };
   }
 
   protected registerBuiltinAttributes() {
+    // 注册 Position 属性 64 位地位部分，经纬度数据开启双精度，避免大于 20层级以上出现数据偏移
+    this.registerPosition64LowAttribute();
+
     this.styleAttributeService.registerStyleAttribute({
       name: 'distanceAndIndex',
       type: AttributeType.Attribute,
       descriptor: {
-        name: 'a_DistanceAndIndex',
+        name: 'a_DistanceAndIndexAndMiter',
+        shaderLocation: this.attributeLocation.DISTANCE_INDEX,
         buffer: {
           // give the WebGL driver a hint that this buffer may change
           usage: gl.STATIC_DRAW,
           data: [],
           type: gl.FLOAT,
         },
-        size: 2,
+        size: 3,
         update: (
           feature: IEncodeFeature,
           featureIdx: number,
@@ -215,29 +175,8 @@ export default class LineModel extends BaseModel {
           vertexIndex?: number,
         ) => {
           return vertexIndex === undefined
-            ? [vertex[3], 10]
-            : [vertex[3], vertexIndex];
-        },
-      },
-    });
-    this.styleAttributeService.registerStyleAttribute({
-      name: 'total_distance',
-      type: AttributeType.Attribute,
-      descriptor: {
-        name: 'a_Total_Distance',
-        buffer: {
-          // give the WebGL driver a hint that this buffer may change
-          usage: gl.STATIC_DRAW,
-          data: [],
-          type: gl.FLOAT,
-        },
-        size: 1,
-        update: (
-          feature: IEncodeFeature,
-          featureIdx: number,
-          vertex: number[],
-        ) => {
-          return [vertex[5]];
+            ? [vertex[3], 10, vertex[4]]
+            : [vertex[3], vertexIndex, vertex[4]];
         },
       },
     });
@@ -247,6 +186,7 @@ export default class LineModel extends BaseModel {
       type: AttributeType.Attribute,
       descriptor: {
         name: 'a_Size',
+        shaderLocation: this.attributeLocation.SIZE,
         buffer: {
           // give the WebGL driver a hint that this buffer may change
           usage: gl.DYNAMIC_DRAW,
@@ -261,19 +201,19 @@ export default class LineModel extends BaseModel {
       },
     });
 
-    // point layer size;
     this.styleAttributeService.registerStyleAttribute({
-      name: 'normal',
+      name: 'normal_total_distance',
       type: AttributeType.Attribute,
       descriptor: {
-        name: 'a_Normal',
+        name: 'a_Normal_Total_Distance',
+        shaderLocation: this.attributeLocation.NORMAL,
         buffer: {
           // give the WebGL driver a hint that this buffer may change
           usage: gl.STATIC_DRAW,
           data: [],
           type: gl.FLOAT,
         },
-        size: 3,
+        size: 4,
         update: (
           feature: IEncodeFeature,
           featureIdx: number,
@@ -281,29 +221,7 @@ export default class LineModel extends BaseModel {
           attributeIdx: number,
           normal: number[],
         ) => {
-          return normal;
-        },
-      },
-    });
-
-    this.styleAttributeService.registerStyleAttribute({
-      name: 'miter',
-      type: AttributeType.Attribute,
-      descriptor: {
-        name: 'a_Miter',
-        buffer: {
-          // give the WebGL driver a hint that this buffer may change
-          usage: gl.STATIC_DRAW,
-          data: [],
-          type: gl.FLOAT,
-        },
-        size: 1,
-        update: (
-          feature: IEncodeFeature,
-          featureIdx: number,
-          vertex: number[],
-        ) => {
-          return [vertex[4]];
+          return [...normal, vertex[5]];
         },
       },
     });
@@ -313,6 +231,7 @@ export default class LineModel extends BaseModel {
       type: AttributeType.Attribute,
       descriptor: {
         name: 'a_iconMapUV',
+        shaderLocation: this.attributeLocation.UV,
         buffer: {
           // give the WebGL driver a hint that this buffer may change
           usage: gl.DYNAMIC_DRAW,
@@ -332,6 +251,9 @@ export default class LineModel extends BaseModel {
 
   private updateTexture = () => {
     const { createTexture2D } = this.rendererService;
+    if (this.textures.length === 0) {
+      this.textures = [this.texture];
+    }
     if (this.texture) {
       this.texture.update({
         data: this.iconService.getCanvas(),

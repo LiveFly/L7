@@ -1,29 +1,20 @@
-import {
-  AttributeType,
-  gl,
+import type {
   IEncodeFeature,
   IFontMapping,
   IModel,
   IModelUniform,
   ITexture2D,
 } from '@antv/l7-core';
-import {
-  boundsContains,
-  calculateCentroid,
-  padBounds,
-  rgb2arr,
-} from '@antv/l7-utils';
-import { isEqual } from 'lodash';
+import { AttributeType, gl } from '@antv/l7-core';
+import { boundsContains, calculateCentroid, lodashUtil, padBounds, rgb2arr } from '@antv/l7-utils';
 import BaseModel from '../../core/BaseModel';
-import { IPointLayerStyleOptions } from '../../core/interface';
+import type { IPointLayerStyleOptions } from '../../core/interface';
 import CollisionIndex from '../../utils/collision-index';
-import {
-  getGlyphQuads,
-  IGlyphQuad,
-  shapeText,
-} from '../../utils/symbol-layout';
-import textFrag from '../shaders/text_frag.glsl';
-import textVert from '../shaders/text_vert.glsl';
+import type { IGlyphQuad } from '../../utils/symbol-layout';
+import { getGlyphQuads, shapeText } from '../../utils/symbol-layout';
+import textFrag from '../shaders/text/text_frag.glsl';
+import textVert from '../shaders/text/text_vert.glsl';
+const { isEqual } = lodashUtil;
 
 export function TextTrianglation(feature: IEncodeFeature) {
   // @ts-ignore
@@ -40,42 +31,39 @@ export function TextTrianglation(feature: IEncodeFeature) {
     };
   }
   const centroid = that.glyphInfoMap[id].centroid as number[]; // 计算中心点
-  const coord =
-    centroid.length === 2 ? [centroid[0], centroid[1], 0] : centroid;
-  that.glyphInfoMap[id].glyphQuads.forEach(
-    (quad: IGlyphQuad, index: number) => {
-      vertices.push(
-        ...coord,
-        quad.tex.x,
-        quad.tex.y + quad.tex.height,
-        quad.tl.x,
-        quad.tl.y,
-        ...coord,
-        quad.tex.x + quad.tex.width,
-        quad.tex.y + quad.tex.height,
-        quad.tr.x,
-        quad.tr.y,
-        ...coord,
-        quad.tex.x + quad.tex.width,
-        quad.tex.y,
-        quad.br.x,
-        quad.br.y,
-        ...coord,
-        quad.tex.x,
-        quad.tex.y,
-        quad.bl.x,
-        quad.bl.y,
-      );
-      indices.push(
-        0 + index * 4,
-        1 + index * 4,
-        2 + index * 4,
-        2 + index * 4,
-        3 + index * 4,
-        0 + index * 4,
-      );
-    },
-  );
+  const coord = centroid.length === 2 ? [centroid[0], centroid[1], 0] : centroid;
+  that.glyphInfoMap[id].glyphQuads.forEach((quad: IGlyphQuad, index: number) => {
+    vertices.push(
+      ...coord,
+      quad.tex.x,
+      quad.tex.y + quad.tex.height,
+      quad.tl.x,
+      quad.tl.y,
+      ...coord,
+      quad.tex.x + quad.tex.width,
+      quad.tex.y + quad.tex.height,
+      quad.tr.x,
+      quad.tr.y,
+      ...coord,
+      quad.tex.x + quad.tex.width,
+      quad.tex.y,
+      quad.br.x,
+      quad.br.y,
+      ...coord,
+      quad.tex.x,
+      quad.tex.y,
+      quad.bl.x,
+      quad.bl.y,
+    );
+    indices.push(
+      0 + index * 4,
+      1 + index * 4,
+      2 + index * 4,
+      2 + index * 4,
+      3 + index * 4,
+      0 + index * 4,
+    );
+  });
   return {
     vertices, // [ x, y, z, tex.x,tex.y, offset.x. offset.y]
     indices,
@@ -84,6 +72,15 @@ export function TextTrianglation(feature: IEncodeFeature) {
 }
 
 export default class TextModel extends BaseModel {
+  protected get attributeLocation() {
+    return Object.assign(super.attributeLocation, {
+      MAX: super.attributeLocation.MAX,
+      SIZE: 9,
+      TEXT_OFFSETS: 10,
+      UV: 11,
+    });
+  }
+
   public glyphInfo: IEncodeFeature[];
   public glyphInfoMap: {
     [key: string]: {
@@ -100,6 +97,20 @@ export default class TextModel extends BaseModel {
   private textCount: number = 0;
   private preTextStyle: Partial<IPointLayerStyleOptions> = {};
   public getUninforms(): IModelUniform {
+    const commoninfo = this.getCommonUniformsInfo();
+    const attributeInfo = this.getUniformsBufferInfo(this.getStyleAttribute());
+    this.updateStyleUnifoms();
+    return {
+      ...commoninfo.uniformsOption,
+      ...attributeInfo.uniformsOption,
+      ...{ u_sdf_map: this.textures[0] },
+    };
+  }
+  protected getCommonUniformsInfo(): {
+    uniformsArray: number[];
+    uniformsLength: number;
+    uniformsOption: { [key: string]: any };
+  } {
     const {
       stroke = '#fff',
       strokeWidth = 0,
@@ -115,16 +126,17 @@ export default class TextModel extends BaseModel {
     }
 
     this.preTextStyle = this.getTextStyle();
-    return {
+
+    const commonOptions = {
+      u_stroke_color: rgb2arr(stroke),
+      u_sdf_map_size: [canvas?.width || 1, canvas?.height || 1],
       u_raisingHeight: Number(raisingHeight),
       u_stroke_width: strokeWidth,
-      u_stroke_color: rgb2arr(stroke),
-      u_sdf_map: this.texture,
-      u_halo_blur: halo,
       u_gamma_scale: gamma,
-      u_sdf_map_size: [canvas?.width || 1, canvas?.height || 1],
-      ...this.getStyleAttribute(),
+      u_halo_blur: halo,
     };
+    const commonBufferInfo = this.getUniformsBufferInfo(commonOptions);
+    return commonBufferInfo;
   }
 
   public async initModels(): Promise<IModel[]> {
@@ -133,12 +145,12 @@ export default class TextModel extends BaseModel {
     this.extent = this.textExtent();
     this.rawEncodeData = this.layer.getEncodedData();
     this.preTextStyle = this.getTextStyle();
+    this.initUniformsBuffer();
     return this.buildModels();
   }
 
   public async buildModels(): Promise<IModel[]> {
-    const { textAllowOverlap = false } =
-      this.layer.getLayerConfig() as IPointLayerStyleOptions;
+    const { textAllowOverlap = false } = this.layer.getLayerConfig() as IPointLayerStyleOptions;
 
     //  this.mapping(); 重复调用
     this.initGlyph(); //
@@ -150,6 +162,7 @@ export default class TextModel extends BaseModel {
       moduleName: 'pointText',
       vertexShader: textVert,
       fragmentShader: textFrag,
+      defines: this.getDefines(),
       inject: this.getInject(),
       triangulation: TextTrianglation.bind(this),
       depth: { enable: false },
@@ -211,27 +224,14 @@ export default class TextModel extends BaseModel {
   }
 
   protected registerBuiltinAttributes() {
-    this.styleAttributeService.registerStyleAttribute({
-      name: 'rotate',
-      type: AttributeType.Attribute,
-      descriptor: {
-        name: 'a_Rotate',
-        buffer: {
-          usage: gl.DYNAMIC_DRAW,
-          data: [],
-          type: gl.FLOAT,
-        },
-        size: 1,
-        update: (feature: IEncodeFeature) => {
-          const { rotate = 0 } = feature;
-          return Array.isArray(rotate) ? [rotate[0]] : [rotate as number];
-        },
-      },
-    });
+    // 注册 Position 属性 64 位地位部分，经纬度数据开启双精度，避免大于 20层级以上出现数据偏移
+    this.registerPosition64LowAttribute();
+
     this.styleAttributeService.registerStyleAttribute({
       name: 'textOffsets',
       type: AttributeType.Attribute,
       descriptor: {
+        shaderLocation: this.attributeLocation.TEXT_OFFSETS,
         name: 'a_textOffsets', // 文字偏移量
         buffer: {
           // give the WebGL driver a hint that this buffer may change
@@ -240,12 +240,26 @@ export default class TextModel extends BaseModel {
           type: gl.FLOAT,
         },
         size: 2,
-        update: (
-          feature: IEncodeFeature,
-          featureIdx: number,
-          vertex: number[],
-        ) => {
+        update: (feature: IEncodeFeature, featureIdx: number, vertex: number[]) => {
           return [vertex[5], vertex[6]];
+        },
+      },
+    });
+
+    this.styleAttributeService.registerStyleAttribute({
+      name: 'textUv',
+      type: AttributeType.Attribute,
+      descriptor: {
+        name: 'a_tex',
+        shaderLocation: this.attributeLocation.UV,
+        buffer: {
+          usage: gl.DYNAMIC_DRAW,
+          data: [],
+          type: gl.FLOAT,
+        },
+        size: 2,
+        update: (feature: IEncodeFeature, featureIdx: number, vertex: number[]) => {
+          return [vertex[3], vertex[4]];
         },
       },
     });
@@ -256,6 +270,7 @@ export default class TextModel extends BaseModel {
       type: AttributeType.Attribute,
       descriptor: {
         name: 'a_Size',
+        shaderLocation: this.attributeLocation.SIZE,
         buffer: {
           // give the WebGL driver a hint that this buffer may change
           usage: gl.DYNAMIC_DRAW,
@@ -266,27 +281,6 @@ export default class TextModel extends BaseModel {
         update: (feature: IEncodeFeature) => {
           const { size = 12 } = feature;
           return Array.isArray(size) ? [size[0]] : [size as number];
-        },
-      },
-    });
-
-    this.styleAttributeService.registerStyleAttribute({
-      name: 'textUv',
-      type: AttributeType.Attribute,
-      descriptor: {
-        name: 'a_tex',
-        buffer: {
-          usage: gl.DYNAMIC_DRAW,
-          data: [],
-          type: gl.FLOAT,
-        },
-        size: 2,
-        update: (
-          feature: IEncodeFeature,
-          featureIdx: number,
-          vertex: number[],
-        ) => {
-          return [vertex[3], vertex[4]];
         },
       },
     });
@@ -396,12 +390,8 @@ export default class TextModel extends BaseModel {
     const data = this.rawEncodeData;
     this.glyphInfo = data.map((feature: IEncodeFeature) => {
       const { shape = '', id, size = 1 } = feature;
-      const offset = feature.textOffset
-        ? feature.textOffset
-        : textOffset || [0, 0];
-      const anchor = feature.textAnchor
-        ? feature.textAnchor
-        : textAnchor || 'center';
+      const offset = feature.textOffset ? feature.textOffset : textOffset || [0, 0];
+      const anchor = feature.textAnchor ? feature.textAnchor : textAnchor || 'center';
 
       const shaping = shapeText(
         shape.toString(),
@@ -421,12 +411,6 @@ export default class TextModel extends BaseModel {
       // feature.centroid = calculteCentroid(coordinates);
 
       feature.centroid = calculateCentroid(feature.coordinates);
-
-      // 此时地图高德2.0 originCentroid == centroid
-      feature.originCentroid =
-        feature.version === 'GAODE2.x'
-          ? calculateCentroid(feature.originCoordinates)
-          : (feature.originCentroid = feature.centroid);
 
       this.glyphInfoMap[id as number] = {
         shaping,
@@ -467,13 +451,7 @@ export default class TextModel extends BaseModel {
     const collisionIndex = new CollisionIndex(width, height);
     const filterData = this.glyphInfo.filter((feature: IEncodeFeature) => {
       const { shaping, id = 0 } = feature;
-      // const centroid = feature.centroid as [number, number];
-      // const centroid = feature.originCentroid as [number, number];
-      const centroid = (
-        feature.version === 'GAODE2.x'
-          ? feature.originCentroid
-          : feature.centroid
-      ) as [number, number];
+      const centroid = feature.centroid as [number, number];
       const size = feature.size as number;
       const fontScale: number = size / 16;
       const pixels = this.mapService.lngLatToContainer(centroid);
@@ -525,6 +503,7 @@ export default class TextModel extends BaseModel {
       width: canvas.width,
       height: canvas.height,
     });
+    this.textures = [this.texture];
   }
 
   private async reBuildModel() {
@@ -534,6 +513,7 @@ export default class TextModel extends BaseModel {
       vertexShader: textVert,
       fragmentShader: textFrag,
       triangulation: TextTrianglation.bind(this),
+      defines: this.getDefines(),
       inject: this.getInject(),
       depth: { enable: false },
     });

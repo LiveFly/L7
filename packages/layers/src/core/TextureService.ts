@@ -1,18 +1,12 @@
-import {
-  ILayer,
-  IRendererService,
-  ITexture2D,
-  ITextureService,
-  TYPES,
-} from '@antv/l7-core';
+import type { ILayer, IRendererService, ITexture2D, ITextureService } from '@antv/l7-core';
 
+import type { IColorRamp } from '@antv/l7-utils';
 import {
   generateCatRamp,
   generateColorRamp,
   generateCustomRamp,
   generateLinearRamp,
   generateQuantizeRamp,
-  IColorRamp,
 } from '@antv/l7-utils';
 
 export default class TextureService implements ITextureService {
@@ -23,9 +17,7 @@ export default class TextureService implements ITextureService {
   constructor(layer: ILayer) {
     this.layer = layer;
     const container = this.layer.getContainer();
-    this.rendererService = container.get<IRendererService>(
-      TYPES.IRendererService,
-    );
+    this.rendererService = container.rendererService;
   }
   public getColorTexture(colorRamp: IColorRamp, domain?: [number, number]) {
     // TODO 支持传入图片
@@ -47,16 +39,13 @@ export default class TextureService implements ITextureService {
       width: imageData.width,
       height: imageData.height,
       flipY: false,
+      unorm: true,
     });
     this.colorTexture = texture;
     return texture;
   }
 
-  public setColorTexture(
-    texture: ITexture2D,
-    colorRamp: IColorRamp,
-    domain: [number, number],
-  ) {
+  public setColorTexture(texture: ITexture2D, colorRamp: IColorRamp, domain: [number, number]) {
     this.key = this.getTextureKey(colorRamp, domain);
     this.colorTexture = texture;
   }
@@ -80,10 +69,7 @@ export default class TextureService implements ITextureService {
     }
   }
 
-  private getTextureKey(
-    colorRamp: IColorRamp,
-    domain?: [number, number],
-  ): string {
+  private getTextureKey(colorRamp: IColorRamp, domain?: [number, number]): string {
     return `${colorRamp.colors.join('_')}_${colorRamp?.positions?.join('_')}_${
       colorRamp.type
     }_${domain?.join('_')}`;

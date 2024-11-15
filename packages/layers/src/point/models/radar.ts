@@ -1,44 +1,50 @@
-import {
-  AttributeType,
-  gl,
+import type {
   IAnimateOption,
   IAttribute,
   IElements,
   IEncodeFeature,
-  ILayerConfig,
   IModel,
   IModelUniform,
 } from '@antv/l7-core';
+import { AttributeType, gl } from '@antv/l7-core';
 import BaseModel from '../../core/BaseModel';
-import { IPointLayerStyleOptions, SizeUnitType } from '../../core/interface';
+import type { IPointLayerStyleOptions } from '../../core/interface';
+import { SizeUnitType } from '../../core/interface';
 import { PointFillTriangulation } from '../../core/triangulation';
-
 import pointFillFrag from '../shaders/radar/radar_frag.glsl';
 import pointFillVert from '../shaders/radar/radar_vert.glsl';
 
 export default class RadarModel extends BaseModel {
-  public getUninforms(): IModelUniform {
+  protected get attributeLocation() {
+    return Object.assign(super.attributeLocation, {
+      MAX: super.attributeLocation.MAX,
+      SIZE: 9,
+      EXTRUDE: 10,
+    });
+  }
+
+  protected getCommonUniformsInfo(): {
+    uniformsArray: number[];
+    uniformsLength: number;
+    uniformsOption: { [key: string]: any };
+  } {
     const {
-      opacity = 1,
       blend,
       speed = 1,
       unit = 'pixel',
     } = this.layer.getLayerConfig() as IPointLayerStyleOptions;
-
-    return {
+    const commonOptions = {
+      u_additive: blend === 'additive' ? 1.0 : 0.0,
       u_size_unit: SizeUnitType[unit] as SizeUnitType,
       u_speed: speed,
-      u_additive: blend === 'additive' ? 1.0 : 0.0,
-      u_opacity: opacity,
-    };
+      u_time: this.layer.getLayerAnimateTime(),
+    }; //1+1+1+1
+    const commonBufferInfo = this.getUniformsBufferInfo(commonOptions);
+
+    return commonBufferInfo;
   }
   public getAnimateUniforms(): IModelUniform {
-    const { animateOption = { enable: false } } =
-      this.layer.getLayerConfig() as ILayerConfig;
-    return {
-      u_animate: this.animateOption2Array(animateOption),
-      u_time: this.layer.getLayerAnimateTime(),
-    };
+    return {};
   }
 
   public getAttribute(): {
@@ -58,11 +64,14 @@ export default class RadarModel extends BaseModel {
   }
 
   public async buildModels(): Promise<IModel[]> {
+    this.initUniformsBuffer();
     const model = await this.layer.buildLayerModel({
       moduleName: 'pointRadar',
       vertexShader: pointFillVert,
       fragmentShader: pointFillFrag,
       triangulation: PointFillTriangulation,
+      defines: this.getDefines(),
+      inject: this.getInject(),
       depth: { enable: false },
     });
     return [model];
@@ -73,11 +82,15 @@ export default class RadarModel extends BaseModel {
     return [option.enable ? 0 : 1.0, option.speed || 1, option.rings || 3, 0];
   }
   protected registerBuiltinAttributes() {
+    // 注册 Position 属性 64 位地位部分，经纬度数据开启双精度，避免大于 20层级以上出现数据偏移
+    this.registerPosition64LowAttribute();
+
     this.styleAttributeService.registerStyleAttribute({
       name: 'extrude',
       type: AttributeType.Attribute,
       descriptor: {
         name: 'a_Extrude',
+        shaderLocation: this.attributeLocation.EXTRUDE,
         buffer: {
           // give the WebGL driver a hint that this buffer may change
           usage: gl.DYNAMIC_DRAW,
@@ -93,11 +106,7 @@ export default class RadarModel extends BaseModel {
         ) => {
           const extrude = [1, 1, 0, -1, 1, 0, -1, -1, 0, 1, -1, 0];
           const extrudeIndex = (attributeIdx % 4) * 3;
-          return [
-            extrude[extrudeIndex],
-            extrude[extrudeIndex + 1],
-            extrude[extrudeIndex + 2],
-          ];
+          return [extrude[extrudeIndex], extrude[extrudeIndex + 1], extrude[extrudeIndex + 2]];
         },
       },
     });
@@ -107,6 +116,7 @@ export default class RadarModel extends BaseModel {
       name: 'size',
       type: AttributeType.Attribute,
       descriptor: {
+        shaderLocation: this.attributeLocation.SIZE,
         name: 'a_Size',
         buffer: {
           // give the WebGL driver a hint that this buffer may change

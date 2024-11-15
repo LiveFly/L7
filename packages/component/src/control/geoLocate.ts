@@ -1,9 +1,7 @@
-import { Point } from '@antv/l7-core';
-import { isNaN } from 'lodash';
+import type { Point } from '@antv/l7-core';
 import { createL7Icon } from '../utils/icon';
-import ButtonControl, {
-  IButtonControlOption,
-} from './baseControl/buttonControl';
+import type { IButtonControlOption } from './baseControl/buttonControl';
+import ButtonControl from './baseControl/buttonControl';
 
 export interface IGeoLocateOption extends IButtonControlOption {
   transform: (position: Point) => Point | Promise<Point>;

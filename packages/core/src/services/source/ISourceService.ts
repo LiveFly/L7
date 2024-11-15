@@ -1,5 +1,5 @@
-import { RequestParameters, SourceTile, TilesetManager } from '@antv/l7-utils';
-import { BBox } from '@turf/helpers';
+import type { RequestParameters, SourceTile, TilesetManager } from '@antv/l7-utils';
+import type { BBox } from '@turf/helpers';
 export type DataType = string | object[] | object;
 export type SourceEventType = 'inited' | 'sourceUpdate' | 'update';
 // 栅格瓦片解析配置项
@@ -38,6 +38,7 @@ export interface ITileParserCFG {
     cb: (err: any, data: any) => void,
   ) => void;
   extent?: [number, number, number, number];
+  coordinates?: [[number, number], [number, number], [number, number], [number, number]];
   requestParameters: Partial<RequestParameters>;
   updateStrategy?: 'overlap' | 'replace';
   // 指定 feature 编码 id
@@ -78,7 +79,7 @@ export interface IParserCfg {
   y?: string;
   x1?: string;
   y1?: string;
-  coordinates?: string;
+  coordinates?: string | [number, number][];
   geometry?: string;
   [key: string]: any;
 }
@@ -161,10 +162,7 @@ export interface ISource {
   ): Array<{ x: number; y: number; z: number }> | undefined;
   getTileByZXY(z: number, x: number, y: number): SourceTile | undefined;
   getClustersLeaves(id: number): any;
-  updateFeaturePropertiesById(
-    id: number,
-    properties: Record<string, any>,
-  ): void;
+  updateFeaturePropertiesById(id: number, properties: Record<string, any>): void;
   destroy(): void;
   // Event
   on(type: SourceEventType | string, handler: (...args: any[]) => void): void;

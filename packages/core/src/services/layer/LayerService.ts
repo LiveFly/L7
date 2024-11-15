@@ -1,26 +1,14 @@
-import { $window, rgb2arr } from '@antv/l7-utils';
+import type { DebouncedFunc } from '@antv/l7-utils';
+import { lodashUtil, rgb2arr } from '@antv/l7-utils';
 import { EventEmitter } from 'eventemitter3';
-import { inject, injectable } from 'inversify';
-import { throttle } from 'lodash';
-import 'reflect-metadata';
-import { TYPES } from '../../types';
+import type { L7Container } from '../../inversify.config';
 import Clock from '../../utils/clock';
-import { IDebugService } from '../debug/IDebugService';
-import { IMapService } from '../map/IMapService';
-import { IRendererService } from '../renderer/IRendererService';
-import {
-  ILayer,
-  ILayerService,
-  LayerServiceEvent,
-  MaskOperation,
-  StencilType,
-} from './ILayerService';
+import type { ILayer, ILayerService, LayerServiceEvent } from './ILayerService';
+import { MaskOperation, StencilType } from './ILayerService';
 
-@injectable()
-export default class LayerService
-  extends EventEmitter<LayerServiceEvent>
-  implements ILayerService
-{
+const { throttle } = lodashUtil;
+
+export default class LayerService extends EventEmitter<LayerServiceEvent> implements ILayerService {
   // pickedLayerId 参数用于指定当前存在被选中的 layer
   public pickedLayerId: number = -1;
   public clock = new Clock();
@@ -41,25 +29,30 @@ export default class LayerService
   private shaderPicking: boolean = true;
 
   private enableRender: boolean = true;
+  private get renderService() {
+    return this.container.rendererService;
+  }
+  private get mapService() {
+    return this.container.mapService;
+  }
+  private get debugService() {
+    return this.container.debugService;
+  }
 
-  @inject(TYPES.IRendererService)
-  private readonly renderService: IRendererService;
+  constructor(private container: L7Container) {
+    super();
+  }
 
-  @inject(TYPES.IMapService)
-  private readonly mapService: IMapService;
-
-  @inject(TYPES.IDebugService)
-  private readonly debugService: IDebugService;
-
-  public reRender = throttle(() => {
+  public reRender: DebouncedFunc<() => void> = throttle(() => {
     this.renderLayers();
   }, 32);
 
-  public throttleRenderLayers = throttle(() => {
+  public throttleRenderLayers: DebouncedFunc<() => void> = throttle(() => {
     this.renderLayers();
   }, 16);
 
   public needPick(type: string): boolean {
+    this.updateLayerRenderList();
     return this.layerList.some((layer) => layer.needPick(type));
   }
   public add(layer: ILayer) {
@@ -113,15 +106,9 @@ export default class LayerService
   public async remove(layer: ILayer, parentLayer?: ILayer): Promise<void> {
     // Tip: layer.layerChildren 当 layer 存在子图层的情况
     if (parentLayer) {
-      const layerIndex = parentLayer.layerChildren.indexOf(layer);
-      if (layerIndex > -1) {
-        parentLayer.layerChildren.splice(layerIndex, 1);
-      }
+      parentLayer.layerChildren = parentLayer.layerChildren.filter((item) => item !== layer);
     } else {
-      const layerIndex = this.layers.indexOf(layer);
-      if (layerIndex > -1) {
-        this.layers.splice(layerIndex, 1);
-      }
+      this.layers = this.layers.filter((item) => item !== layer);
     }
     layer.destroy();
     this.reRender();
@@ -147,6 +134,12 @@ export default class LayerService
     this.alreadyInRendering = true;
     this.clear();
     for (const layer of this.layerList) {
+      layer.prerender();
+    }
+
+    // The main render pass, all layers in a whole.
+    this.renderService.beginFrame();
+    for (const layer of this.layerList) {
       const { enableMask } = layer.getLayerConfig();
       if (layer.masks.filter((m) => m.inited).length > 0 && enableMask) {
         // 清除上一次的模版缓存
@@ -156,9 +149,10 @@ export default class LayerService
         // multiPassRender 不是同步渲染完成的
         await layer.renderMultiPass();
       } else {
-        await layer.render();
+        layer.render();
       }
     }
+    this.renderService.endFrame();
     this.debugService.renderEnd(renderUid);
     this.alreadyInRendering = false;
   }
@@ -170,8 +164,7 @@ export default class LayerService
       depth: 1,
       framebuffer: null,
     });
-    const stencilType =
-      masks.length > 1 ? StencilType.MULTIPLE : StencilType.SINGLE;
+    const stencilType = masks.length > 1 ? StencilType.MULTIPLE : StencilType.SINGLE;
     for (const layer of masks) {
       // 清除上一次的模版缓存
       layer.render({ isStencil: true, stencilType, stencilIndex: maskIndex++ });
@@ -187,13 +180,12 @@ export default class LayerService
   public renderTileLayerMask(layer: ILayer) {
     let maskindex = 0;
     const { enableMask = true } = layer.getLayerConfig();
-    let maskCount = layer.tileMask ? 1 : 0;
+    let maskCount = layer.tileMask ? 1 : 0; // 瓦片裁剪 线图层或者面图层
     const masklayers = layer.masks.filter((m) => m.inited);
 
     maskCount = maskCount + (enableMask ? masklayers.length : 1);
-    const stencilType =
-      maskCount > 1 ? StencilType.MULTIPLE : StencilType.SINGLE;
-    //  兼容MaskLayer MaskLayer的掩膜不能clear
+    const stencilType = maskCount > 1 ? StencilType.MULTIPLE : StencilType.SINGLE;
+    //  兼容MaskLayer MaskLayer的掩模不能clear
     if (layer.tileMask || (masklayers.length && enableMask)) {
       this.renderService.clear({
         stencil: 0,
@@ -213,7 +205,6 @@ export default class LayerService
     }
     // // 瓦片裁剪
     if (layer.tileMask) {
-      // TODO 示例瓦片掩膜多层支持
       layer.tileMask.render({
         isStencil: true,
         stencilType,
@@ -289,12 +280,7 @@ export default class LayerService
   }
 
   public clear() {
-    const color = rgb2arr(this.mapService.bgColor) as [
-      number,
-      number,
-      number,
-      number,
-    ];
+    const color = rgb2arr(this.mapService.bgColor) as [number, number, number, number];
     this.renderService.clear({
       color,
       depth: 1,
@@ -305,12 +291,10 @@ export default class LayerService
 
   private runRender() {
     this.renderLayers();
-    this.layerRenderID = $window.requestAnimationFrame(
-      this.runRender.bind(this),
-    );
+    this.layerRenderID = window.requestAnimationFrame(this.runRender.bind(this));
   }
 
   private stopRender() {
-    $window.cancelAnimationFrame(this.layerRenderID);
+    window.cancelAnimationFrame(this.layerRenderID);
   }
 }

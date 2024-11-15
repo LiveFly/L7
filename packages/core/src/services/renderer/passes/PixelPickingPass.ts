@@ -1,22 +1,19 @@
 import { decodePickingColor, DOM, encodePickingColor } from '@antv/l7-utils';
-import { injectable } from 'inversify';
-import 'reflect-metadata';
-import {
-  IInteractionTarget,
-  InteractionEvent,
-} from '../../interaction/IInteractionService';
-import { ILayer } from '../../layer/ILayerService';
-import { ILngLat } from '../../map/IMapService';
+import type { IInteractionTarget } from '../../interaction/IInteractionService';
+import { InteractionEvent } from '../../interaction/IInteractionService';
+import type { ILayer } from '../../layer/ILayerService';
+import type { ILngLat } from '../../map/IMapService';
 import { gl } from '../gl';
-import { IFramebuffer } from '../IFramebuffer';
+import type { IFramebuffer } from '../IFramebuffer';
 import { PassType } from '../IMultiPassRenderer';
 import BaseNormalPass from './BaseNormalPass';
 
 /**
  * color-based PixelPickingPass
  * @see https://github.com/antvis/L7/blob/next/dev-docs/PixelPickingEngine.md
+ * @deprecated
+ * 目前未使用
  */
-@injectable()
 export default class PixelPickingPass<
   InitializationOptions = {},
 > extends BaseNormalPass<InitializationOptions> {
@@ -50,29 +47,24 @@ export default class PixelPickingPass<
   public init(layer: ILayer, config?: Partial<InitializationOptions>) {
     super.init(layer, config);
     this.layer = layer;
-    const { createTexture2D, createFramebuffer, getViewportSize } =
-      this.rendererService;
+    const { createTexture2D, createFramebuffer, getViewportSize } = this.rendererService;
     const { width, height } = getViewportSize();
     // 创建 picking framebuffer，后续实时 resize
+    const pickingColorTexture = createTexture2D({
+      width,
+      height,
+      wrapS: gl.CLAMP_TO_EDGE,
+      wrapT: gl.CLAMP_TO_EDGE,
+      label: 'Picking Texture',
+    });
     this.pickingFBO = createFramebuffer({
-      color: createTexture2D({
-        width,
-        height,
-        wrapS: gl.CLAMP_TO_EDGE,
-        wrapT: gl.CLAMP_TO_EDGE,
-      }),
+      color: pickingColorTexture,
     });
 
     // 监听 hover 事件
     this.interactionService.on(InteractionEvent.Hover, this.pickFromPickingFBO);
-    this.interactionService.on(
-      InteractionEvent.Select,
-      this.selectFeatureHandle.bind(this),
-    );
-    this.interactionService.on(
-      InteractionEvent.Active,
-      this.highlightFeatureHandle.bind(this),
-    );
+    this.interactionService.on(InteractionEvent.Select, this.selectFeatureHandle.bind(this));
+    this.interactionService.on(InteractionEvent.Active, this.highlightFeatureHandle.bind(this));
   }
 
   public render(layer: ILayer) {
@@ -126,8 +118,7 @@ export default class PixelPickingPass<
     if (!this.layer.isVisible() || !this.layer.needPick(type)) {
       return;
     }
-    const { getViewportSize, readPixels, useFramebuffer } =
-      this.rendererService;
+    const { getViewportSize, readPixelsAsync, useFramebuffer } = this.rendererService;
     const { width, height } = getViewportSize();
     const { enableHighlight, enableSelect } = this.layer.getLayerConfig();
 
@@ -142,9 +133,9 @@ export default class PixelPickingPass<
       return;
     }
     let pickedColors: Uint8Array | undefined;
-    useFramebuffer(this.pickingFBO, () => {
+    useFramebuffer(this.pickingFBO, async () => {
       // avoid realloc
-      pickedColors = readPixels({
+      pickedColors = await readPixelsAsync({
         x: Math.round(xInDevicePixel),
         // 视口坐标系原点在左上，而 WebGL 在左下，需要翻转 Y 轴
         y: Math.round(height - (y + 1) * DOM.DPR),
@@ -154,15 +145,9 @@ export default class PixelPickingPass<
         framebuffer: this.pickingFBO,
       });
 
-      if (
-        pickedColors[0] !== 0 ||
-        pickedColors[1] !== 0 ||
-        pickedColors[2] !== 0
-      ) {
+      if (pickedColors[0] !== 0 || pickedColors[1] !== 0 || pickedColors[2] !== 0) {
         const pickedFeatureIdx = decodePickingColor(pickedColors);
-        const rawFeature = this.layer
-          .getSource()
-          .getFeatureById(pickedFeatureIdx);
+        const rawFeature = this.layer.getSource().getFeatureById(pickedFeatureIdx);
         const target = {
           x,
           y,
@@ -185,8 +170,7 @@ export default class PixelPickingPass<
           x,
           y,
           lngLat,
-          type:
-            this.layer.getCurrentPickId() === null ? 'un' + type : 'mouseout',
+          type: this.layer.getCurrentPickId() === null ? 'un' + type : 'mouseout',
           featureId: null,
           feature: null,
         };

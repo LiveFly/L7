@@ -1,23 +1,34 @@
-import { IParserData } from '@antv/l7-core';
+import type { IParserData } from '@antv/l7-core';
+import type { RequestParameters } from '@antv/l7-utils';
 import { getImage, isImageBitmap } from '@antv/l7-utils';
-interface IImageCfg {
-  extent: [number, number, number, number];
+import { extentToCoord } from '../utils/util';
+export interface IImageCfg {
+  extent?: [number, number, number, number];
+  coordinates?: [[number, number], [number, number], [number, number], [number, number]]; // 非矩形
+  requestParameters?: Omit<RequestParameters, 'url'>;
 }
 export default function image(
   data: string | string[] | HTMLImageElement | ImageBitmap,
   cfg: IImageCfg,
 ): IParserData {
   // 为 extent 赋默认值
-  const { extent = [121.168, 30.2828, 121.384, 30.4219] } = cfg;
+  const {
+    extent = [121.168, 30.2828, 121.384, 30.4219],
+    coordinates,
+    requestParameters = {},
+  } = cfg;
   const images = new Promise((resolve) => {
     if (data instanceof HTMLImageElement || isImageBitmap(data)) {
       resolve([data]);
     } else {
-      loadData(data, (res: any) => {
+      loadData(data, requestParameters, (res: any) => {
         resolve(res);
       });
     }
   });
+
+  const imageCoord = extentToCoord(coordinates, extent);
+
   const resultData: IParserData = {
     originData: data,
     images,
@@ -25,21 +36,21 @@ export default function image(
     dataArray: [
       {
         _id: 0,
-        coordinates: [
-          [extent[0], extent[1]],
-          [extent[2], extent[3]],
-        ],
+        coordinates: imageCoord,
       },
     ],
   };
   return resultData;
 }
 
-function loadData(data: string | string[], done: any) {
-  const url = data;
+function loadData(
+  url: string | string[],
+  requestParameters: Omit<RequestParameters, 'url'>,
+  done: any,
+) {
   const imageDatas: Array<HTMLImageElement | ImageBitmap> = [];
   if (typeof url === 'string') {
-    getImage({ url }, (err, img) => {
+    getImage({ ...requestParameters, url }, (err, img) => {
       if (img) {
         imageDatas.push(img);
         done(imageDatas);
@@ -49,7 +60,7 @@ function loadData(data: string | string[], done: any) {
     const imageCount = url.length;
     let imageindex = 0;
     url.forEach((item) => {
-      getImage({ url: item }, (err, img) => {
+      getImage({ ...requestParameters, url: item }, (err, img) => {
         imageindex++;
         if (img) {
           imageDatas.push(img);

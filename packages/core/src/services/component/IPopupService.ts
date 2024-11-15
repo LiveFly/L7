@@ -1,7 +1,7 @@
-import { anchorType, DOM } from '@antv/l7-utils';
-import EventEmitter from 'eventemitter3';
-import { Container } from 'inversify';
-import { ILngLat } from '../map/IMapService';
+import type { DOM, anchorType } from '@antv/l7-utils';
+import type EventEmitter from 'eventemitter3';
+import type { L7Container } from '../../inversify.config';
+import type { ILngLat } from '../map/IMapService';
 
 export interface IPopupOption {
   /**
@@ -91,7 +91,7 @@ export interface IPopupOption {
 }
 
 export interface IPopup extends EventEmitter {
-  addTo(scene: Container): this;
+  addTo(scene: L7Container): this;
   remove(): void;
   setLnglat(lngLat: ILngLat): this;
   getLnglat(): ILngLat;
@@ -108,7 +108,7 @@ export interface IPopup extends EventEmitter {
 export interface IPopupService {
   addPopup(popup: IPopup): void;
   removePopup(popup: IPopup): void;
-  init(scene: Container): void;
+  init(scene: L7Container): void;
   initPopup(): void;
   destroy(): void;
 }

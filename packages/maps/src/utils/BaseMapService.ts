@@ -1,9 +1,8 @@
 /**
  * MapboxService
  */
-import {
+import type {
   Bounds,
-  CoordinateSystem,
   ICoordinateSystemService,
   IGlobalConfigService,
   ILngLat,
@@ -14,17 +13,16 @@ import {
   IPoint,
   IStatusOptions,
   IViewport,
-  MapServiceEvent,
+  L7Container,
   MapStyleConfig,
   MapStyleName,
-  TYPES,
 } from '@antv/l7-core';
-import { Map } from '@antv/l7-map';
+import { CoordinateSystem, MapServiceEvent } from '@antv/l7-core';
+import type { Map } from '@antv/l7-map';
 import { DOM } from '@antv/l7-utils';
-import { inject, injectable } from 'inversify';
-import 'reflect-metadata';
-import { Version } from '../version';
-import { ISimpleMapCoord, SimpleMapCoord } from './simpleMapCoord';
+import { EventEmitter } from 'eventemitter3';
+import type { ISimpleMapCoord } from './simpleMapCoord';
+import { SimpleMapCoord } from './simpleMapCoord';
 import { MapTheme } from './theme';
 const EventMap: {
   [key: string]: any;
@@ -36,31 +34,29 @@ const EventMap: {
 };
 
 const LNGLAT_OFFSET_ZOOM_THRESHOLD = 12;
-/**
- * AMapService
- */
-@injectable()
-export default abstract class BaseMapService<T>
-  implements IMapService<Map & T>
-{
-  public version: string = Version.DEFUALT;
+
+export default abstract class BaseMapService<T> implements IMapService<Map & T> {
+  public version: string = 'DEFAUlTMAP';
   public map: Map & T;
   public simpleMapCoord: ISimpleMapCoord = new SimpleMapCoord();
   // 背景色
   public bgColor: string = 'rgba(0.0, 0.0, 0.0, 0.0)';
-  protected viewport: IViewport | unknown;
+  protected abstract viewport: IViewport | unknown;
 
-  @inject(TYPES.MapConfig)
   protected readonly config: Partial<IMapConfig>;
 
-  @inject(TYPES.IGlobalConfigService)
   protected readonly configService: IGlobalConfigService;
 
-  @inject(TYPES.ICoordinateSystemService)
   protected readonly coordinateSystemService: ICoordinateSystemService;
 
-  @inject(TYPES.IEventEmitter)
   protected eventEmitter: any;
+
+  constructor(container: L7Container) {
+    this.config = container.mapConfig;
+    this.configService = container.globalConfigService;
+    this.coordinateSystemService = container.coordinateSystemService;
+    this.eventEmitter = new EventEmitter();
+  }
 
   protected markerContainer: HTMLElement;
   protected cameraChangedCallback: (viewport: IViewport) => void;
@@ -80,6 +76,10 @@ export default abstract class BaseMapService<T>
     return this.markerContainer;
   }
   public getOverlayContainer(): HTMLElement | undefined {
+    return undefined;
+  }
+
+  public getCanvasOverlays(): HTMLElement | null | undefined {
     return undefined;
   }
 
@@ -106,7 +106,7 @@ export default abstract class BaseMapService<T>
   }
 
   public getSize(): [number, number] {
-    if (this.version === Version.SIMPLE) {
+    if (this.version === 'SIMPLE') {
       return this.simpleMapCoord.getSize();
     }
     const size = this.map.transform;
@@ -174,7 +174,6 @@ export default abstract class BaseMapService<T>
   }
 
   public panBy(x: number = 0, y: number = 0): void {
-    // @ts-ignore
     this.map.panBy([x, y]);
   }
 
@@ -230,7 +229,8 @@ export default abstract class BaseMapService<T>
   }
 
   public setMapStyle(style: any): void {
-    this.map.setStyle(this.getMapStyleValue(style));
+    // @ts-ignore
+    this.map?.setStyle(this.getMapStyleValue(style));
   }
 
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
@@ -254,10 +254,7 @@ export default abstract class BaseMapService<T>
   public lngLatToContainer(lnglat: [number, number]): IPoint {
     return this.map.project(lnglat);
   }
-  public abstract lngLatToMercator(
-    lnglat: [number, number],
-    altitude: number,
-  ): IMercator;
+  public abstract lngLatToMercator(lnglat: [number, number], altitude: number): IMercator;
 
   public abstract getModelMatrix(
     lnglat: [number, number],
@@ -310,7 +307,8 @@ export default abstract class BaseMapService<T>
   }
 
   public exportMap(type: 'jpg' | 'png'): string {
-    const renderCanvas = this.map.getCanvas();
+    // @ts-ignore
+    const renderCanvas = this.map?.getCanvas();
     const layersPng =
       type === 'jpg'
         ? (renderCanvas?.toDataURL('image/jpeg') as string)
@@ -370,13 +368,8 @@ export default abstract class BaseMapService<T>
   protected updateCoordinateSystemService() {
     const { offsetCoordinate = true } = this.config;
     // set coordinate system
-    if (
-      (this.viewport as IViewport).getZoom() > LNGLAT_OFFSET_ZOOM_THRESHOLD &&
-      offsetCoordinate
-    ) {
-      this.coordinateSystemService.setCoordinateSystem(
-        CoordinateSystem.LNGLAT_OFFSET,
-      );
+    if ((this.viewport as IViewport).getZoom() > LNGLAT_OFFSET_ZOOM_THRESHOLD && offsetCoordinate) {
+      this.coordinateSystemService.setCoordinateSystem(CoordinateSystem.LNGLAT_OFFSET);
     } else {
       this.coordinateSystemService.setCoordinateSystem(CoordinateSystem.LNGLAT);
     }

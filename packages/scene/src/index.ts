@@ -1,8 +1,6 @@
 import { Logo } from '@antv/l7-component';
-import {
+import type {
   Bounds,
-  createLayerContainer,
-  createSceneContainer,
   ICameraOptions,
   IControl,
   IControlService,
@@ -23,28 +21,21 @@ import {
   IPopup,
   IPopupService,
   IPostProcessingPass,
-  IRendererService,
   ISceneConfig,
   ISceneService,
   IStatusOptions,
+  L7Container,
   Point,
-  SceneEventList,
-  TYPES,
 } from '@antv/l7-core';
-import { MaskLayer } from '@antv/l7-layers';
-import { ReglRendererService } from '@antv/l7-renderer';
-import {
-  DOM,
-  IProtocolHandler,
-  isMini,
-  SceneConifg,
-  setMiniScene,
-} from '@antv/l7-utils';
-import { Container } from 'inversify';
+import { SceneEventList, createLayerContainer, createSceneContainer } from '@antv/l7-core';
+import { MaskLayer, TileLayer } from '@antv/l7-layers';
+import { DeviceRendererService, ReglRendererService } from '@antv/l7-renderer';
+import type { IProtocolHandler } from '@antv/l7-utils';
+import { DOM, SceneConifg } from '@antv/l7-utils';
+import type ILayerManager from './ILayerManager';
+import type IMapController from './IMapController';
+import type IPostProcessingPassPluggable from './IPostProcessingPassPluggable';
 import BoxSelect, { BoxSelectEventList } from './boxSelect';
-import ILayerManager from './ILayerManager';
-import IMapController from './IMapController';
-import IPostProcessingPassPluggable from './IPostProcessingPassPluggable';
 
 /**
  * 暴露 Scene API
@@ -58,9 +49,7 @@ import IPostProcessingPassPluggable from './IPostProcessingPassPluggable';
  * scene.addLayer(pointLayer);
  *
  */
-class Scene
-  implements IPostProcessingPassPluggable, IMapController, ILayerManager
-{
+class Scene implements IPostProcessingPassPluggable, IMapController, ILayerManager {
   private sceneService: ISceneService;
   private mapService: IMapService<unknown>;
   private controlService: IControlService;
@@ -72,57 +61,43 @@ class Scene
   private fontService: IFontService;
   private interactionService: IInteractionService;
   private boxSelect: BoxSelect;
-  private container: Container;
+  private container: L7Container;
 
   public constructor(config: ISceneConfig) {
-    const { id, map, canvas, hasBaseMap } = config;
+    const { id, map, renderer = 'device' } = config;
     // 创建场景容器
     const sceneContainer = createSceneContainer();
     this.container = sceneContainer;
     // 绑定地图服务
-    map.setContainer(sceneContainer, id, canvas, hasBaseMap);
-
-    // 绑定渲染引擎服务
-    sceneContainer
-      .bind<IRendererService>(TYPES.IRendererService)
-      .to(ReglRendererService)
-      .inSingletonScope();
+    map.setContainer(sceneContainer, id);
+    if (renderer === 'regl') {
+      sceneContainer.rendererService = new ReglRendererService();
+    } else {
+      sceneContainer.rendererService = new DeviceRendererService();
+    }
 
     // 依赖注入
-    this.sceneService = sceneContainer.get<ISceneService>(TYPES.ISceneService);
-    this.mapService = sceneContainer.get<IMapService<unknown>>(
-      TYPES.IMapService,
-    );
-    this.iconService = sceneContainer.get<IIconService>(TYPES.IIconService);
-    this.fontService = sceneContainer.get<IFontService>(TYPES.IFontService);
-    this.controlService = sceneContainer.get<IControlService>(
-      TYPES.IControlService,
-    );
-    this.layerService = sceneContainer.get<ILayerService>(TYPES.ILayerService);
-    this.debugService = sceneContainer.get<IDebugService>(TYPES.IDebugService);
+    this.sceneService = sceneContainer.sceneService;
+    this.mapService = sceneContainer.mapService;
+    this.iconService = sceneContainer.iconService;
+    this.fontService = sceneContainer.fontService;
+    this.controlService = sceneContainer.controlService;
+    this.layerService = sceneContainer.layerService;
+    this.debugService = sceneContainer.debugService;
     this.debugService.setEnable(config.debug);
 
-    this.markerService = sceneContainer.get<IMarkerService>(
-      TYPES.IMarkerService,
-    );
-    this.interactionService = sceneContainer.get<IInteractionService>(
-      TYPES.IInteractionService,
-    );
-    this.popupService = sceneContainer.get<IPopupService>(TYPES.IPopupService);
+    this.markerService = sceneContainer.markerService;
+    this.interactionService = sceneContainer.interactionService;
+    this.popupService = sceneContainer.popupService;
     this.boxSelect = new BoxSelect(this, {});
-    setMiniScene(config?.isMini || false);
 
-    if (isMini) {
-      this.sceneService.initMiniScene(config);
-    } else {
-      this.initComponent(id);
+    this.initComponent(id);
 
-      // 初始化 scene
-      this.sceneService.init(config);
-      // TODO: 初始化组件
+    // 初始化 scene
+    this.sceneService.init(config);
+    // TODO: 初始化组件
 
-      this.initControl();
-    }
+    this.initControl();
   }
 
   public get map() {
@@ -133,7 +108,7 @@ class Scene
     return this.sceneService.loaded;
   }
 
-  public getServiceContainer(): Container {
+  public getServiceContainer(): L7Container {
     return this.container;
   }
   public getSize(): [number, number] {
@@ -191,33 +166,41 @@ class Scene
     this.mapService.setBgColor(color);
   }
 
-  // layer 管理
   public addLayer(layer: ILayer): void {
+    if (this.loaded) {
+      this.preAddLayer(layer);
+    } else {
+      this.once('loaded', () => {
+        this.preAddLayer(layer);
+      });
+    }
+  }
+
+  // layer 管理
+  public preAddLayer(layer: ILayer): void {
     // 为当前图层创建一个容器
     // TODO: 初始化的时候设置 容器
     const layerContainer = createLayerContainer(this.container);
-    layer.setContainer(layerContainer, this.container);
+    layer.setContainer(layerContainer);
     this.sceneService.addLayer(layer);
 
     // mask 在 scene loaded 之后执行
     if (layer.inited) {
+      this.initTileLayer(layer);
+      // 全局mask
       const maskInstance = this.initMask(layer);
       this.addMask(maskInstance as ILayer, layer.id);
     } else {
       layer.on('inited', () => {
+        this.initTileLayer(layer);
         const maskInstance = this.initMask(layer); // 初始化 mask
         this.addMask(maskInstance as ILayer, layer.id);
       });
     }
   }
-
+  // 兼容历史接口
   public initMask(layer: ILayer) {
-    const {
-      mask,
-      maskfence,
-      maskColor = '#000',
-      maskOpacity = 0,
-    } = layer.getLayerConfig();
+    const { mask, maskfence, maskColor = '#000', maskOpacity = 0 } = layer.getLayerConfig();
     if (!mask || !maskfence) {
       return undefined;
     }
@@ -235,7 +218,7 @@ class Scene
     const parent = this.getLayer(layerId);
     if (parent) {
       const layerContainer = createLayerContainer(this.container);
-      mask.setContainer(layerContainer, this.container);
+      mask.setContainer(layerContainer);
       parent.addMaskLayer(mask);
       this.sceneService.addMask(mask);
     } else {
@@ -303,11 +286,7 @@ class Scene
   }
 
   public async addImage(id: string, img: IImage) {
-    if (!isMini) {
-      await this.iconService.addImage(id, img);
-    } else {
-      this.iconService.addImageMini(id, img, this.sceneService);
-    }
+    await this.iconService.addImage(id, img);
   }
 
   public hasImage(id: string) {
@@ -503,12 +482,8 @@ class Scene
 
   public registerPostProcessingPass(
     constructor: new (...args: any[]) => IPostProcessingPass<unknown>,
-    name: string,
   ) {
-    this.container
-      .bind<IPostProcessingPass<unknown>>(TYPES.IPostProcessingPass)
-      .to(constructor)
-      .whenTargetNamed(name);
+    this.container.postProcessingPass.name = new constructor();
   }
 
   // 控制 shader pick 计算
@@ -546,6 +521,14 @@ class Scene
     return SceneConifg.REGISTERED_PROTOCOLS[protocol];
   }
 
+  public startAnimate() {
+    this.layerService.startAnimate();
+  }
+
+  public stopAnimate() {
+    this.layerService.stopAnimate();
+  }
+
   // get current point size info
   public getPointSizeRange() {
     return this.sceneService.getPointSizeRange();
@@ -566,6 +549,13 @@ class Scene
     const { logoVisible, logoPosition } = this.sceneService.getSceneConfig();
     if (logoVisible) {
       this.addControl(new Logo({ position: logoPosition }));
+    }
+  }
+
+  private initTileLayer(layer: ILayer) {
+    if (layer.getSource().isTile) {
+      layer.tileLayer = new TileLayer(layer);
+      // Todo 支持瓦片更新
     }
   }
 }

@@ -1,30 +1,26 @@
-import { inject, injectable } from 'inversify';
-import { camelCase, isNil, upperFirst } from 'lodash';
-import 'reflect-metadata';
-import { IShaderModuleService } from '../../shader/IShaderModuleService';
-import { gl } from '../gl';
-import { IModel } from '../IModel';
-import { IRendererService } from '../IRendererService';
-
+// lodashUtil
+import { lodashUtil } from '@antv/l7-utils';
 import quad from '../../../shaders/post-processing/quad.glsl';
-import { TYPES } from '../../../types';
-import { ILayer } from '../../layer/ILayerService';
-import { IPostProcessingPass, PassType } from '../IMultiPassRenderer';
-import { ITexture2D } from '../ITexture2D';
-import { IUniform } from '../IUniform';
+import type { ILayer } from '../../layer/ILayerService';
+import type { IShaderModuleService } from '../../shader/IShaderModuleService';
+import type { IModel } from '../IModel';
+import type { IPostProcessingPass } from '../IMultiPassRenderer';
+import { PassType } from '../IMultiPassRenderer';
+import type { IRendererService } from '../IRendererService';
+import type { ITexture2D } from '../ITexture2D';
+import type { IUniform } from '../IUniform';
+import { gl } from '../gl';
+const { camelCase, isNil, upperFirst } = lodashUtil;
 
 /**
  * 后处理 Pass 基类，通过 PostProcessor 驱动。
  *
  * 约定使用 u_Texture 传递渲染纹理。
  */
-@injectable()
 export default class BasePostProcessingPass<InitializationOptions = {}>
   implements IPostProcessingPass<InitializationOptions>
 {
-  @inject(TYPES.IShaderModuleService)
   protected shaderModuleService: IShaderModuleService;
-
   protected rendererService: IRendererService;
 
   protected config: Partial<InitializationOptions> | undefined;
@@ -67,12 +63,8 @@ export default class BasePostProcessingPass<InitializationOptions = {}>
 
   public init(layer: ILayer, config?: Partial<InitializationOptions>) {
     this.config = config;
-    this.rendererService = layer
-      .getContainer()
-      .get<IRendererService>(TYPES.IRendererService);
-    this.shaderModuleService = layer
-      .getContainer()
-      .get<IShaderModuleService>(TYPES.IShaderModuleService);
+    this.rendererService = layer.getContainer().rendererService;
+    this.shaderModuleService = layer.getContainer().shaderModuleService;
 
     const { createAttribute, createBuffer, createModel } = this.rendererService;
     const { vs, fs, uniforms } = this.setupShaders();
@@ -112,32 +104,29 @@ export default class BasePostProcessingPass<InitializationOptions = {}>
     const postProcessor = layer.multiPassRenderer.getPostProcessor();
     const { useFramebuffer, getViewportSize, clear } = this.rendererService;
     const { width, height } = getViewportSize();
-    useFramebuffer(
-      this.renderToScreen ? null : postProcessor.getWriteFBO(),
-      () => {
-        clear({
-          framebuffer: postProcessor.getWriteFBO(),
-          color: [0, 0, 0, 0],
-          depth: 1,
-          stencil: 0,
-        });
+    useFramebuffer(this.renderToScreen ? null : postProcessor.getWriteFBO(), () => {
+      clear({
+        framebuffer: postProcessor.getWriteFBO(),
+        color: [0, 0, 0, 0],
+        depth: 1,
+        stencil: 0,
+      });
 
-        const uniformOptions: { [key: string]: any } = {
-          u_BloomFinal: 0.0,
-          u_Texture: postProcessor.getReadFBO(),
-          // u_Texture: tex ? tex : postProcessor.getReadFBO(),
-          u_ViewportSize: [width, height],
-          ...this.convertOptionsToUniforms(this.optionsToUpdate),
-        };
-        if (tex) {
-          uniformOptions.u_BloomFinal = 1.0;
-          uniformOptions.u_Texture2 = tex;
-        }
-        this.model.draw({
-          uniforms: uniformOptions,
-        });
-      },
-    );
+      const uniformOptions: { [key: string]: any } = {
+        u_BloomFinal: 0.0,
+        u_Texture: postProcessor.getReadFBO(),
+        // u_Texture: tex ? tex : postProcessor.getReadFBO(),
+        u_ViewportSize: [width, height],
+        ...this.convertOptionsToUniforms(this.optionsToUpdate),
+      };
+      if (tex) {
+        uniformOptions.u_BloomFinal = 1.0;
+        uniformOptions.u_Texture2 = tex;
+      }
+      this.model.draw({
+        uniforms: uniformOptions,
+      });
+    });
   }
 
   public isEnabled() {

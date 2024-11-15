@@ -1,33 +1,24 @@
-import {
+import type {
   ILngLat,
   IMapService,
   IMarkerContainerAndBounds,
   IMarkerOption,
   IPoint,
   IPopup,
-  ISceneService,
-  TYPES,
+  L7Container,
 } from '@antv/l7-core';
-import {
-  anchorTranslate,
-  anchorType,
-  applyAnchorClass,
-  bindAll,
-  DOM,
-  isPC,
-} from '@antv/l7-utils';
+import { DOM, anchorTranslate, anchorType, applyAnchorClass, bindAll, isPC } from '@antv/l7-utils';
 import { EventEmitter } from 'eventemitter3';
-import { Container } from 'inversify';
+
 //  marker 支持 dragger 未完成
 export default class Marker extends EventEmitter {
   private markerOption: IMarkerOption;
-  private defaultMarker: boolean;
   private popup: IPopup;
   private mapsService: IMapService<unknown>;
-  private sceneSerive: ISceneService;
   private lngLat: ILngLat;
-  private scene: Container;
+  private scene: L7Container;
   private added: boolean = false;
+  private preLngLat = { lng: 0, lat: 0 };
   // tslint:disable-next-line: no-empty
   public getMarkerLayerContainerSize(): IMarkerContainerAndBounds | void {}
 
@@ -37,7 +28,7 @@ export default class Marker extends EventEmitter {
       ...this.getDefault(),
       ...option,
     };
-    bindAll(['update', 'onMove', 'onMapClick'], this);
+    bindAll(['update', 'onMove', 'onMapClick', 'updatePositionWhenZoom'], this);
     this.init();
   }
 
@@ -48,20 +39,19 @@ export default class Marker extends EventEmitter {
       offsets: [0, 0],
       color: '#5B8FF9',
       draggable: false,
+      overflowHide: true,
     };
   }
 
-  public addTo(scene: Container) {
-    // this.remove();
+  public addTo(scene: L7Container) {
     this.scene = scene;
-    this.mapsService = scene.get<IMapService>(TYPES.IMapService);
-    this.sceneSerive = scene.get<ISceneService>(TYPES.ISceneService);
+    this.mapsService = scene.mapService;
     const { element } = this.markerOption;
-    // this.sceneSerive.getSceneContainer().appendChild(element as HTMLElement);
     this.mapsService.getMarkerContainer().appendChild(element as HTMLElement);
     this.registerMarkerEvent(element as HTMLElement);
     this.mapsService.on('camerachange', this.update); // 注册高德1.x 的地图事件监听
     this.update();
+    this.updateDraggable();
     this.added = true;
     this.emit('added');
     return this;
@@ -125,6 +115,7 @@ export default class Marker extends EventEmitter {
     this.init();
     this.mapsService.getMarkerContainer().appendChild(el as HTMLElement);
     this.registerMarkerEvent(el as HTMLElement);
+    this.updateDraggable();
     this.update();
     return this;
   }
@@ -187,12 +178,12 @@ export default class Marker extends EventEmitter {
     return this.markerOption.offsets;
   }
 
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   public setDraggable(draggable: boolean) {
-    throw new Error('Method not implemented.');
+    this.markerOption.draggable = draggable;
+    this.updateDraggable();
   }
 
-  public isDraggable() {
+  public getDraggable() {
     return this.markerOption.draggable;
   }
 
@@ -212,7 +203,54 @@ export default class Marker extends EventEmitter {
     this.updatePosition();
     DOM.setTransform(element as HTMLElement, `${anchorTranslate[anchor]}`);
   }
-
+  //天地图在开始缩放时触发 更新目标位置时添加过渡效果
+  private updatePositionWhenZoom(ev: { map: any; center: any; zoom: any }) {
+    if (!this.mapsService) {
+      return;
+    }
+    const { element, offsets } = this.markerOption;
+    const { lng, lat } = this.lngLat;
+    if (element) {
+      element.style.display = 'block';
+      element.style.whiteSpace = 'nowrap';
+      const { containerHeight, containerWidth, bounds } =
+        this.getMarkerLayerContainerSize() || this.getCurrentContainerSize();
+      if (!bounds) {
+        return;
+      }
+      const map = ev.map;
+      const center = ev.center;
+      const zoom = ev.zoom;
+      const projectedCenter = map.DE(this.lngLat, zoom, center);
+      projectedCenter.x = Math.round(projectedCenter.x + offsets[0]);
+      projectedCenter.y = Math.round(projectedCenter.y - offsets[1]);
+      // 当前可视区域包含跨日界线
+      if (Math.abs(bounds[0][0]) > 180 || Math.abs(bounds[1][0]) > 180) {
+        if (projectedCenter.x > containerWidth) {
+          // 日界线右侧点左移
+          const newPos = this.mapsService.lngLatToContainer([lng - 360, lat]);
+          projectedCenter.x = newPos.x;
+        }
+        if (projectedCenter.x < 0) {
+          // 日界线左侧点右移
+          const newPos = this.mapsService.lngLatToContainer([lng + 360, lat]);
+          projectedCenter.x = newPos.x;
+        }
+      }
+      if (
+        projectedCenter.x > containerWidth ||
+        projectedCenter.x < 0 ||
+        projectedCenter.y > containerHeight ||
+        projectedCenter.y < 0
+      ) {
+        element.style.display = 'none';
+      }
+      element.style.left = projectedCenter.x + 'px';
+      element.style.top = projectedCenter.y + 'px';
+      element.style.transition =
+        'left 0.25s cubic-bezier(0,0,0.25,1), top 0.25s cubic-bezier(0,0,0.25,1)';
+    }
+  }
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
   private onMapClick(e: MouseEvent) {
     const { element } = this.markerOption;
@@ -229,6 +267,59 @@ export default class Marker extends EventEmitter {
       bounds: this.mapsService.getBounds(),
     };
   }
+
+  private updateDraggable() {
+    const { element } = this.markerOption;
+    element?.removeEventListener('mousedown', this.onMarkerDragStart);
+    this.mapsService.off('mousemove', this.onMarkerDragMove);
+    document.removeEventListener('mouseup', this.onMarkerDragEnd);
+    if (this.markerOption.draggable) {
+      element?.addEventListener('mousedown', this.onMarkerDragStart);
+    }
+  }
+
+  private onMarkerDragStart = (e: MouseEvent) => {
+    const mapContainer = this.mapsService.getContainer();
+    if (!mapContainer) {
+      return;
+    }
+    this.mapsService.setMapStatus({
+      dragEnable: false,
+      zoomEnable: false,
+    });
+    const { left: containerX, top: containerY } = mapContainer.getClientRects()[0]!;
+    const { x: clickX, y: clickY } = e;
+    this.preLngLat = this.mapsService.containerToLngLat([clickX - containerX, clickY - containerY]);
+    this.mapsService.on('mousemove', this.onMarkerDragMove);
+    document.addEventListener('mouseup', this.onMarkerDragEnd);
+    this.emit('dragstart', this.lngLat);
+  };
+
+  private onMarkerDragMove = (e: any) => {
+    // 适配不同底图，事件返回的数据名称不一致
+    const lngLat: ILngLat = e.lngLat || e.lnglat;
+    const { lng: preLng, lat: preLat } = this.preLngLat;
+    const { lng: curLng, lat: curLat } = lngLat;
+    const newLngLat = {
+      lng: this.lngLat.lng + curLng - preLng,
+      lat: this.lngLat.lat + curLat - preLat,
+    };
+    this.setLnglat(newLngLat);
+    this.preLngLat = lngLat;
+    this.emit('dragging', newLngLat);
+  };
+
+  private onMarkerDragEnd = () => {
+    this.mapsService.setMapStatus({
+      dragEnable: true,
+      zoomEnable: true,
+    });
+
+    this.mapsService.off('mousemove', this.onMarkerDragMove);
+    document.removeEventListener('mouseup', this.onMarkerDragEnd);
+    this.emit('dragend', this.lngLat);
+  };
+
   private updatePosition() {
     if (!this.mapsService) {
       return;
@@ -258,15 +349,13 @@ export default class Marker extends EventEmitter {
           pos.x = newPos.x;
         }
       }
-      // 不在当前可视区域内隐藏点
-      if (
-        pos.x > containerWidth ||
-        pos.x < 0 ||
-        pos.y > containerHeight ||
-        pos.y < 0
-      ) {
-        element.style.display = 'none';
+      if (this.markerOption.overflowHide) {
+        // 不在当前可视区域内隐藏点
+        if (pos.x > containerWidth || pos.x < 0 || pos.y > containerHeight || pos.y < 0) {
+          element.style.display = 'none';
+        }
       }
+
       element.style.left = pos.x + offsets[0] + 'px';
       element.style.top = pos.y - offsets[1] + 'px';
     }
@@ -276,7 +365,6 @@ export default class Marker extends EventEmitter {
     let { element } = this.markerOption;
     const { color, anchor } = this.markerOption;
     if (!element) {
-      this.defaultMarker = true;
       element = DOM.create('div') as HTMLDivElement;
       this.markerOption.element = element;
       const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
@@ -285,10 +373,7 @@ export default class Marker extends EventEmitter {
       svg.setAttributeNS(null, 'width', '48px');
       svg.setAttributeNS(null, 'viewBox', '0 0 1024 1024');
 
-      const path = document.createElementNS(
-        'http://www.w3.org/2000/svg',
-        'path',
-      );
+      const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
       path.setAttributeNS(
         null,
         'd',
@@ -302,8 +387,7 @@ export default class Marker extends EventEmitter {
     Object.keys(this.markerOption.style || {}).forEach(
       // @ts-ignore
       (key: keyof CSSStyleDeclaration) => {
-        const value =
-          this.markerOption?.style && (this.markerOption?.style[key] as string);
+        const value = this.markerOption?.style && (this.markerOption?.style[key] as string);
         if (element) {
           // @ts-ignore
           (element.style as CSSStyleDeclaration)[key] = value;
@@ -356,7 +440,7 @@ export default class Marker extends EventEmitter {
    */
   private touchStartTime: number;
   private polyfillEvent(e: MouseEvent | TouchEvent) {
-    if (!this.mapsService || this.mapsService.version !== 'GAODE2.x') {
+    if (!this.mapsService || this.mapsService.getType() !== 'amap') {
       return;
     }
     if (!isPC()) {

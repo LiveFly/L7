@@ -1,16 +1,9 @@
-import { BaseLayer, ILayer, IMercator, ISourceCFG } from '@antv/l7';
-import {
-  AnimationMixer,
-  Matrix4,
-  Object3D,
-  Scene,
-  Vector3,
-  WebGLRenderer,
-} from 'three';
-import {
-  IThreeRenderService,
-  ThreeRenderServiceType,
-} from './threeRenderService';
+import type { ILayer, IMercator, ISourceCFG } from '@antv/l7';
+import { BaseLayer } from '@antv/l7';
+import type { AnimationMixer, Object3D, WebGLRenderer } from 'three';
+import { Matrix4, Scene, Vector3 } from 'three';
+import type { IThreeRenderService } from './threeRenderService';
+
 type ILngLat = [number, number];
 export default class ThreeJSLayer
   extends BaseLayer<{
@@ -117,12 +110,8 @@ export default class ThreeJSLayer
    * @returns
    */
   public lnglatToCoord(lnglat: ILngLat) {
-    // @ts-ignore
-    const [x, y] = this.mapService?.lngLatToCoord(
-      lnglat,
-      // @ts-ignore
-      this.threeRenderService.center,
-    );
+    const { x, y } = this.mapService.lngLatToMercator(lnglat, 0);
+    // const origin = this.threeRenderService.center ||  [0, 0]
     return [x, y] as ILngLat;
   }
 
@@ -159,12 +148,7 @@ export default class ThreeJSLayer
    * @param y
    * @param z
    */
-  public setMeshScale(
-    object: Object3D,
-    x: number = 1,
-    y: number = 1,
-    z: number = 1,
-  ) {
+  public setMeshScale(object: Object3D, x: number = 1, y: number = 1, z: number = 1) {
     const scaleMatrix = new Matrix4();
     scaleMatrix.scale(new Vector3(x, y, z));
     object.applyMatrix4(scaleMatrix);
@@ -172,9 +156,7 @@ export default class ThreeJSLayer
 
   public async buildModels() {
     // @ts-ignore
-    this.threeRenderService = this.getContainer().get<IThreeRenderService>(
-      ThreeRenderServiceType,
-    );
+    this.threeRenderService = this.container.customRenderService['three'];
     const config = this.getLayerConfig();
     if (config && config.onAddMeshes) {
       await config.onAddMeshes(this.scene, this);
@@ -190,8 +172,7 @@ export default class ThreeJSLayer
     // 获取到 L7 的 gl
     const gl = this.rendererService.getGLContext();
     this.rendererService.setCustomLayerDefaults();
-    const cullFace =
-      this.mapService.constructor.name === 'AMapService' ? gl.BACK : gl.FRONT;
+    const cullFace = this.mapService.version?.indexOf('GAODE') !== -1 ? gl.BACK : gl.FRONT;
     gl.cullFace(cullFace);
 
     // threejs 的 renderer

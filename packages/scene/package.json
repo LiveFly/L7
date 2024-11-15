@@ -1,45 +1,40 @@
 {
   "name": "@antv/l7-scene",
-  "version": "2.17.10",
+  "version": "2.22.3",
   "description": "",
+  "license": "MIT",
+  "author": "https://github.com/orgs/antvis/people",
+  "sideEffects": false,
   "main": "lib/index.js",
   "module": "es/index.js",
   "types": "es/index.d.ts",
-  "sideEffects": false,
   "files": [
     "lib",
-    "es",
-    "README.md"
+    "es"
   ],
   "scripts": {
-    "tsc": "tsc --project tsconfig.build.json",
-    "clean": "rimraf dist; rimraf es; rimraf lib;",
-    "build": "father build",
-    "build:cjs": "BABEL_ENV=cjs babel src --root-mode upward --out-dir lib --source-maps --extensions .ts,.tsx --delete-dir-on-start --no-comments",
-    "build:esm": "BABEL_ENV=esm babel src --root-mode upward --out-dir es --source-maps --extensions .ts,.tsx --delete-dir-on-start --no-comments",
-    "watch": "BABEL_ENV=cjs babel src --watch --root-mode upward --out-dir lib --source-maps --extensions .ts,.tsx --delete-dir-on-start --no-comments",
-    "sync": "tnpm sync"
+    "dev": "father dev",
+    "build": "npm run clean && father build",
+    "check-deps": "father doctor",
+    "lint": "eslint src __tests__",
+    "clean": "rimraf dist es lib"
   },
-  "author": "xiaoiver",
-  "license": "ISC",
   "dependencies": {
-    "@antv/l7-component": "2.17.10",
-    "@antv/l7-core": "2.17.10",
-    "@antv/l7-layers": "2.17.10",
-    "@antv/l7-maps": "2.17.10",
-    "@antv/l7-renderer": "2.17.10",
-    "@antv/l7-utils": "2.17.10",
+    "@antv/l7-component": "workspace:*",
+    "@antv/l7-core": "workspace:*",
+    "@antv/l7-layers": "workspace:*",
+    "@antv/l7-maps": "workspace:*",
+    "@antv/l7-renderer": "workspace:*",
+    "@antv/l7-utils": "workspace:*",
     "@babel/runtime": "^7.7.7",
-    "eventemitter3": "^4.0.7",
-    "inversify": "^5.0.1",
-    "mapbox-gl": "^1.2.1",
-    "reflect-metadata": "^0.1.13"
+    "eventemitter3": "^4.0.7"
   },
   "devDependencies": {
-    "@antv/l7-test-utils": "2.17.10"
+    "@antv/l7-test-utils": "workspace:^"
   },
-  "gitHead": "684ba4eb806a798713496d3fc0b4d1e17517dc31",
   "publishConfig": {
-    "access": "public"
-  }
+    "access": "public",
+    "registry": "https://registry.npmjs.org"
+  },
+  "repository": "git@github.com:antvis/L7.git"
 }

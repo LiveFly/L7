@@ -1,43 +1,36 @@
-// @ts-ignore
-import {
+import type {
   AsyncSeriesBailHook,
   AsyncWaterfallHook,
   SyncBailHook,
   SyncHook,
 } from '@antv/async-hook';
-import { IColorRamp, SourceTile, TilesetManager } from '@antv/l7-utils';
-import { Container } from 'inversify';
-import Clock from '../../utils/clock';
-import { ITextureService } from '../asset/ITextureService';
-import { ISceneConfig } from '../config/IConfigService';
-import { IInteractionTarget } from '../interaction/IInteractionService';
-import {
-  ILayerPickService,
-  IPickingService,
-} from '../interaction/IPickingService';
-import { IMapService } from '../map/IMapService';
-import { IAttribute } from '../renderer/IAttribute';
-import {
+import type { IColorRamp, SourceTile, TilesetManager } from '@antv/l7-utils';
+import type { L7Container } from '../../inversify.config';
+import type Clock from '../../utils/clock';
+import type { ITextureService } from '../asset/ITextureService';
+import type { ISceneConfig } from '../config/IConfigService';
+import type { IInteractionTarget } from '../interaction/IInteractionService';
+import type { ILayerPickService, IPickingService } from '../interaction/IPickingService';
+import type { IMapService } from '../map/IMapService';
+import type { IAttribute } from '../renderer/IAttribute';
+import type { IBuffer } from '../renderer/IBuffer';
+import type {
   IBlendOptions,
   IModel,
   IModelInitializationOptions,
   IStencilOptions,
 } from '../renderer/IModel';
-import {
+import type {
   IMultiPassRenderer,
   IPass,
   IPostProcessingPass,
 } from '../renderer/IMultiPassRenderer';
-import { IRendererService } from '../renderer/IRendererService';
-import { ITexture2D } from '../renderer/ITexture2D';
-import { IUniform } from '../renderer/IUniform';
-import {
-  IParseDataItem,
-  ISource,
-  ISourceCFG,
-  ITransform,
-} from '../source/ISourceService';
-import {
+import type { IRendererService } from '../renderer/IRendererService';
+import type { ITexture2D } from '../renderer/ITexture2D';
+import type { IUniform } from '../renderer/IUniform';
+import type { ShaderDefine, ShaderInject } from '../shader/IShaderModuleService';
+import type { IParseDataItem, ISource, ISourceCFG, ITransform } from '../source/ISourceService';
+import type {
   IAnimateOption,
   IEncodeFeature,
   IScale,
@@ -80,13 +73,23 @@ export interface ILayerModelInitializationOptions {
   moduleName: string;
   vertexShader: string;
   fragmentShader: string;
+  /** Code injections */
+  inject?: ShaderInject;
+  /** Defines to be injected */
+  defines?: Record<string, ShaderDefine>;
   triangulation: Triangulation;
-  segmentNumber?: number;
+  styleOption?: unknown;
   workerEnabled?: boolean;
   workerOptions?: IWorkerOption;
+  /**
+   * When disabled, the picking uniform buffer will not be binded. Default to `true`.
+   */
+  pickingEnabled?: boolean;
 }
 
 export interface ILayerModel {
+  uniformBuffers: IBuffer[];
+  textures: ITexture2D[];
   renderUpdate?(): void;
   getBlend(): Partial<IBlendOptions>;
   getStencil(option?: Partial<IRenderOptions>): Partial<IStencilOptions>;
@@ -97,6 +100,8 @@ export interface ILayerModel {
   initModels(): Promise<IModel[]>;
   needUpdate(): Promise<boolean>;
   clearModels(refresh?: boolean): void;
+
+  prerender(): void;
   render(renderOptions?: Partial<IRenderOptions>): void;
 
   // canvasLayer
@@ -104,7 +109,6 @@ export interface ILayerModel {
 
   // earth mode
   setEarthTime?(time: number): void;
-  createModelData?(options?: any): any;
 }
 
 export interface ILayerAttributesOption {
@@ -250,7 +254,7 @@ export interface IBaseTileLayerManager {
 }
 
 export interface ITilePickService {
-  pick(layer: ILayer, target: IInteractionTarget): boolean;
+  pick(layer: ILayer, target: IInteractionTarget): Promise<boolean>;
   pickRender(target: IInteractionTarget): void;
 }
 
@@ -363,7 +367,7 @@ export interface ILayer {
   layerChildren: ILayer[]; // 在图层中添加子图层
   masks: ILayer[]; // 图层的 mask 列表
   tileMask?: ILayer | undefined; // 图层的 tileMask;
-  sceneContainer: Container | undefined;
+  container: L7Container | undefined;
   dataState: IDataState; // 数据流状态
   defaultSourceConfig: {
     data: any[];
@@ -418,8 +422,8 @@ export interface ILayer {
   getAttribute(name: string): IStyleAttribute | undefined;
   getLayerConfig<T>(): Partial<ILayerConfig & ISceneConfig & T>;
   getLayerAttributeConfig(): Partial<ILayerAttributesOption>;
-  getContainer(): Container;
-  setContainer(container: Container, sceneContainer: Container): void;
+  getContainer(): L7Container;
+  setContainer(container: L7Container): void;
   setCurrentPickId(id: number | null): void;
   getCurrentPickId(): number | null;
   setCurrentSelectedId(id: number | null): void;
@@ -430,12 +434,10 @@ export interface ILayer {
   rebuildModels(): void;
   getModelType(): string;
   buildLayerModel(
-    options: ILayerModelInitializationOptions &
-      Partial<IModelInitializationOptions>,
+    options: ILayerModelInitializationOptions & Partial<IModelInitializationOptions>,
   ): Promise<IModel>;
   createAttributes(
-    options: ILayerModelInitializationOptions &
-      Partial<IModelInitializationOptions>,
+    options: ILayerModelInitializationOptions & Partial<IModelInitializationOptions>,
   ): {
     [attributeName: string]: IAttribute;
   };
@@ -459,15 +461,9 @@ export interface ILayer {
   // pattern(field: string, value: StyleAttributeOption): ILayer;
   filter(field: string, value: StyleAttributeOption): ILayer;
   active(option: IActiveOption | boolean): ILayer;
-  setActive(
-    id: number | { x: number; y: number },
-    option?: IActiveOption,
-  ): void;
+  setActive(id: number | { x: number; y: number }, option?: IActiveOption): void;
   select(option: IActiveOption | boolean): ILayer;
-  setSelect(
-    id: number | { x: number; y: number },
-    option?: IActiveOption,
-  ): void;
+  setSelect(id: number | { x: number; y: number }, option?: IActiveOption): void;
   setAutoFit(autoFit: boolean): void;
   style(options: unknown): ILayer;
   hide(): ILayer;
@@ -497,6 +493,7 @@ export interface ILayer {
     passes?: Array<string | [string, { [key: string]: unknown }]>,
   ): ILayer;
   renderLayers(): void;
+  prerender(): void;
   render(options?: Partial<IRenderOptions>): ILayer;
 
   renderMultiPass(): any;
@@ -531,10 +528,7 @@ export interface ILayer {
    * 直接调用拾取方法，在非鼠标交互场景中使用
    */
   pick(query: { x: number; y: number }): void;
-  boxSelect(
-    box: [number, number, number, number],
-    cb: (...args: any[]) => void,
-  ): void;
+  boxSelect(box: [number, number, number, number], cb: (...args: any[]) => void): void;
 
   updateLayerConfig(configToUpdate: Partial<ILayerConfig | unknown>): void;
   setAnimateStartTime(): void;
@@ -581,22 +575,18 @@ export interface ILayer {
 
   // 设置当前地球时间 控制太阳角度
   setEarthTime(time: number): void;
+
+  /**
+   * WebGL2 下更新 Layer 级 Uniform
+   */
+  getPickingUniformBuffer(): IBuffer;
 }
 
 /**
  * Layer 插件
  */
 export interface ILayerPlugin {
-  apply(
-    layer: ILayer,
-    services: {
-      rendererService: IRendererService;
-      mapService: IMapService;
-      styleAttributeService: IStyleAttributeService;
-      postProcessingPassFactory: (name: string) => IPostProcessingPass<unknown>;
-      normalPassFactory: (name: string) => IPass<unknown>;
-    },
-  ): void;
+  apply(layer: ILayer, container: L7Container): void;
 }
 
 /**
@@ -640,7 +630,6 @@ export interface ILayerConfig {
   cursorEnabled?: boolean;
   cursor?: string;
   forward: boolean; // 正方向
-  usage?: string; // 指定图层的使用类型 - 用户地图底图绘制的优化
   enableMask: boolean;
   /**
    * 开启拾取
@@ -661,14 +650,6 @@ export interface ILayerConfig {
   activeColor: string | number[];
   activeMix?: number;
   selectMix?: number;
-  /**
-   * 开启 TAA
-   */
-  enableTAA: boolean;
-  /**
-   * 相机抖动程度
-   */
-  jitterScale: number;
   /**
    * 开启光照
    */

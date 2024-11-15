@@ -1,7 +1,7 @@
-import { anchorType, IBounds } from '@antv/l7-utils';
-import { Container } from 'inversify';
-import { ILngLat, IMapService, IPoint } from '../map/IMapService';
-import { IPopup } from './IPopupService';
+import type { anchorType, IBounds } from '@antv/l7-utils';
+import type { L7Container } from '../../inversify.config';
+import type { ILngLat, IMapService, IPoint } from '../map/IMapService';
+import type { IPopup } from './IPopupService';
 export interface IMarkerScene {
   getMapService(): IMapService<unknown>;
   [key: string]: any;
@@ -16,6 +16,7 @@ export interface IMarkerOption {
   color: string;
   offsets: number[];
   draggable: boolean;
+  overflowHide?: boolean;
   extData?: any;
   style?: CSSStyleDeclaration;
 }
@@ -27,7 +28,7 @@ export interface IMarkerContainerAndBounds {
 }
 
 export interface IMarker {
-  addTo(scene: Container): void;
+  addTo(scene: L7Container): void;
   remove(): void;
   setLnglat(lngLat: ILngLat | IPoint): this;
   getLnglat(): ILngLat;
@@ -50,14 +51,14 @@ export interface IMarkerService {
   addMarkerLayers(): void;
   removeMarker(Marker: IMarker): void;
   removeAllMarkers(): void;
-  init(scene: Container): void;
+  init(scene: L7Container): void;
   destroy(): void;
 }
 
 export interface IMarkerLayer {
   addMarker(marker: IMarker): void;
   getMarkers(): IMarker[];
-  addTo(scene: Container): void;
+  addTo(scene: L7Container): void;
   removeMarker(marker: IMarker): void;
   clear(): void;
   destroy(): void;

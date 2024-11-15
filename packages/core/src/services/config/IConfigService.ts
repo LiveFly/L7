@@ -1,23 +1,25 @@
 // import Ajv from 'ajv';
-import { PositionName } from '../component/IControlService';
-import { ILayerAttributesOption, ILayerConfig } from '../layer/ILayerService';
-import { IMapWrapper } from '../map/IMapService';
-import { IRenderConfig } from '../renderer/IRendererService';
+import type { PositionName } from '../component/IControlService';
+import type { ILayerAttributesOption, ILayerConfig } from '../layer/ILayerService';
+import type { IMapWrapper } from '../map/IMapService';
+import type { IRenderConfig } from '../renderer/IRendererService';
 export interface ISceneConfig extends IRenderConfig {
   id: string | HTMLDivElement;
   canvas?: HTMLCanvasElement;
   gl?: any;
-  hasBaseMap?: boolean;
   map: IMapWrapper;
   logoPosition?: PositionName;
   logoVisible?: boolean;
-  isMini?: boolean; // 是否是小程序场景
   animate?: boolean;
   fitBoundsOptions?: unknown;
   pickBufferScale?: number;
   // TODO: 场景是否支持 stencil mask
   stencil?: boolean;
   debug?: boolean;
+  /**
+   * Support regl & @antv/g-device-api now
+   */
+  renderer?: 'regl' | 'device';
 }
 
 export interface IGlobalConfigService {
@@ -59,11 +61,7 @@ export interface IGlobalConfigService {
    * @param layerId 图层 ID
    * @param config 图层配置项
    */
-  setLayerConfig(
-    sceneId: string,
-    layerId: string,
-    config: Partial<ILayerConfig>,
-  ): void;
+  setLayerConfig(sceneId: string, layerId: string, config: Partial<ILayerConfig>): void;
   /**
    * 获取数据映射
    */
@@ -74,10 +72,7 @@ export interface IGlobalConfigService {
    * @param layerId sh
    * @param attr
    */
-  setAttributeConfig(
-    layerId: string,
-    attr: Partial<ILayerAttributesOption>,
-  ): void;
+  setAttributeConfig(layerId: string, attr: Partial<ILayerAttributesOption>): void;
 
   /**
    * 清除场景和图层配置项 Cache，但是需要保留校验器

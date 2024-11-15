@@ -1,10 +1,7 @@
-import {
-  IAttribute,
-  IAttributeInitializationOptions,
-} from '../renderer/IAttribute';
-import { IBufferInitializationOptions } from '../renderer/IBuffer';
-import { IElements } from '../renderer/IElements';
-import { ILayer } from './ILayerService';
+import type { IAttribute, IAttributeInitializationOptions } from '../renderer/IAttribute';
+import type { IBufferInitializationOptions } from '../renderer/IBuffer';
+import type { IElements } from '../renderer/IElements';
+import type { ILayer } from './ILayerService';
 
 /**
  * 1. 提供各个 Layer 样式属性初始值的注册服务
@@ -25,6 +22,7 @@ export enum ScaleTypes {
   THRESHOLD = 'threshold',
   CAT = 'cat',
   DIVERGING = 'diverging',
+  CUSTOM = 'threshold',
 }
 export type ScaleTypeName =
   | 'linear'
@@ -37,7 +35,8 @@ export type ScaleTypeName =
   | 'threshold'
   | 'diverging'
   | 'sequential'
-  | 'cat';
+  | 'cat'
+  | 'custom';
 
 export type ScaleAttributeType = 'color' | 'size' | 'shape';
 export interface IScale {
@@ -170,7 +169,7 @@ export interface IStyleAttribute extends IStyleAttributeInitializationOptions {
 
 export type Triangulation = (
   feature: IEncodeFeature,
-  segmentNumber?: number,
+  styleOption?: unknown,
 ) => {
   vertices: number[];
   indices: number[];
@@ -191,9 +190,7 @@ export interface IStyleAttributeService {
     };
     elements: IElements;
   };
-  registerStyleAttribute(
-    options: Partial<IStyleAttributeInitializationOptions>,
-  ): IStyleAttribute;
+  registerStyleAttribute(options: Partial<IStyleAttributeInitializationOptions>): IStyleAttribute;
   unRegisterStyleAttribute(name: string): void;
   updateScaleAttribute(scale: IScaleOptions): void;
   updateStyleAttribute(
@@ -207,7 +204,8 @@ export interface IStyleAttributeService {
   createAttributesAndIndices(
     encodedFeatures: IEncodeFeature[],
     triangulation?: Triangulation,
-    segmentNumber?: number,
+    styleOption?: unknown,
+    layer?: ILayer,
   ): {
     attributes: {
       [attributeName: string]: IAttribute;

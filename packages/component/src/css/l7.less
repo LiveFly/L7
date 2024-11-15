@@ -1,3 +1,5 @@
+@import 'variables.less';
+
 .l7-marker-container {
   position: absolute;
   width: 100%;
@@ -25,7 +27,11 @@
   height: 30px;
   margin-top: 5px;
   margin-left: 5px;
-  font: 12px 'Helvetica Neue', Arial, Helvetica, sans-serif;
+  font:
+    12px 'Helvetica Neue',
+    Arial,
+    Helvetica,
+    sans-serif;
   text-align: center;
   background-color: rgba(110, 204, 57, 0.6);
   border-radius: 15px;
@@ -55,6 +61,6 @@
   border: 3px dashed gray;
   border-radius: 2px;
   position: absolute;
-  z-index: 1000;
+  z-index: @l7-control-z-index;
   box-sizing: border-box;
 }

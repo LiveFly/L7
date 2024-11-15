@@ -1,5 +1,5 @@
-import { Container } from 'inversify';
-import { IViewport } from '../camera/ICameraService';
+import type { L7Container } from '../../inversify.config';
+import type { IViewport } from '../camera/ICameraService';
 export type Point = [number, number];
 export type Bounds = [[number, number], [number, number]];
 export interface ILngLat {
@@ -34,12 +34,7 @@ export type MapStyleConfig = {
 export type MapStyle = MapStyleName | any;
 
 export interface IMapWrapper {
-  setContainer(
-    container: Container,
-    id: string | HTMLDivElement,
-    canvas?: HTMLCanvasElement,
-    hasBaseMap?: boolean,
-  ): void;
+  setContainer(container: L7Container, id: string | HTMLDivElement): void;
 }
 
 interface ISimpleMapCoord {
@@ -54,7 +49,6 @@ export interface IMapService<RawMap = {}> {
   simpleMapCoord: ISimpleMapCoord;
   map: RawMap;
   bgColor: string;
-  setCoordCenter?(center: number[]): void;
   setBgColor(color: string): void;
   init(): void;
   initMiniMap?(): void;
@@ -87,6 +81,7 @@ export interface IMapService<RawMap = {}> {
   getMapStyleConfig(): MapStyleConfig; // 获取当前地图类型默认的样式配置
   getMapStyleValue(name: MapStyleName): string | any; // 获取当前地图类型key值对应的样式 value，可能为字符串，也可能为对象
   getMapStyle(): MapStyleName | any; // 获取当期地图
+  getCanvasOverlays(): HTMLElement | undefined | null;
   setMapStyle(style: MapStyleName | any): void;
 
   // control with raw map
@@ -122,7 +117,6 @@ export interface IMapService<RawMap = {}> {
     lnglatArray: number[][][] | number[][],
   ): number[][][] | number[][] | number[][][] | number[][];
   // lngLatToCoords?(lnglatArray: any): any;
-  getCustomCoordCenter?(): [number, number];
   exportMap(type: 'jpg' | 'png'): string;
 
   // 地球模式下的地图方法/属性
@@ -311,8 +305,6 @@ export interface IMapCamera {
   cameraPosition?: [number, number, number];
   up?: [number, number, number];
   lookAt?: [number, number, number];
-  // 偏移原点，例如 P20 坐标系下
-  offsetOrigin: [number, number];
 }
 export interface ICameraOptions {
   padding:

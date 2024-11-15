@@ -1,12 +1,5 @@
-import {
-  ILayer,
-  ILayerService,
-  ILngLat,
-  IRendererService,
-  ITile,
-} from '@antv/l7-core';
-import { SourceTile } from '@antv/l7-utils';
-import 'reflect-metadata';
+import type { ILayer, ILayerService, ILngLat, IRendererService, ITile } from '@antv/l7-core';
+import type { SourceTile } from '@antv/l7-utils';
 
 interface ITileLayerServiceOptions {
   rendererService: IRendererService;
@@ -23,11 +16,7 @@ export class TileLayerService {
   private parent: ILayer;
 
   private layerTiles: ITile[] = [];
-  constructor({
-    rendererService,
-    layerService,
-    parent,
-  }: ITileLayerServiceOptions) {
+  constructor({ rendererService, layerService, parent }: ITileLayerServiceOptions) {
     this.rendererService = rendererService;
     this.layerService = layerService;
     this.parent = parent;
@@ -64,30 +53,23 @@ export class TileLayerService {
   }
   public updateTileVisible(sourceTile: SourceTile) {
     const tile = this.getTile(sourceTile.key);
-    // if(sourceTile.isVisible) {
-    //   // 不可见 => 可见 兄弟节点加载完成
-    //   if(sourceTile.parent) {
-    //     const flag = this.isChildrenLoaded(sourceTile.parent)
-    //     tile?.updateVisible(flag);
-    //   } else {
-    //     tile?.updateVisible(true);
-    //   }
-
-    // } else {
-    //    // 可见 => 不可见 兄弟节点加载完成
-    //    if(sourceTile.parent) {
-    //     const flag = this.isChildrenLoaded(sourceTile.parent)
-    //     tile?.updateVisible(!flag);
-    //   } else {
-    //     tile?.updateVisible(false);
-    //   }
-    // }
-    tile?.updateVisible(sourceTile.isVisible);
-    // if (sourceTile.isVisible) {
-    //   tile?.updateVisible(sourceTile.isVisible);
-    // } else {
-    //   this.removeTile(sourceTile.key);
-    // }
+    if (sourceTile.isVisible) {
+      // 不可见 => 可见 兄弟节点加载完成
+      if (sourceTile.parent) {
+        const flag = this.isChildrenLoaded(sourceTile.parent);
+        tile?.updateVisible(flag);
+      } else {
+        tile?.updateVisible(true);
+      }
+    } else {
+      // 可见 => 不可见 兄弟节点加载完成
+      if (sourceTile.parent) {
+        const flag = this.isChildrenLoaded(sourceTile.parent);
+        tile?.updateVisible(!flag);
+      } else {
+        tile?.updateVisible(false);
+      }
+    }
   }
   public isParentLoaded(sourceTile: SourceTile): boolean {
     const parentTile = sourceTile.parent;
@@ -108,9 +90,12 @@ export class TileLayerService {
     if (childrenTile.length === 0) {
       return true;
     }
-    return childrenTile.some((tile: SourceTile) => {
+    return childrenTile.every((tile: SourceTile) => {
       const tileLayer = this.getTile(tile?.key);
-      return tileLayer?.isLoaded === false;
+      if (!tileLayer) {
+        return true;
+      }
+      return tileLayer?.isLoaded === true;
     });
   }
   public async render() {
@@ -122,9 +107,7 @@ export class TileLayerService {
   }
 
   public getRenderLayers() {
-    const tileList = this.layerTiles.filter(
-      (t: ITile) => t.visible && t.isLoaded,
-    );
+    const tileList = this.layerTiles.filter((t: ITile) => t.visible && t.isLoaded);
     const layers: ILayer[] = [];
     tileList.map((tile: ITile) => layers.push(...tile.getLayers()));
     return layers;

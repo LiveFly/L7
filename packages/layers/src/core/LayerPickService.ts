@@ -1,12 +1,4 @@
-import {
-  IInteractionTarget,
-  ILayer,
-  ILayerPickService,
-  ILayerService,
-  IMapService,
-  IPickingService,
-  TYPES,
-} from '@antv/l7-core';
+import type { IInteractionTarget, ILayer, ILayerPickService, IMapService } from '@antv/l7-core';
 import { lngLatInExtent } from '@antv/l7-utils';
 export default class BaseLayerPickService implements ILayerPickService {
   private layer: ILayer;
@@ -15,12 +7,13 @@ export default class BaseLayerPickService implements ILayerPickService {
   }
   public pickRender(target: IInteractionTarget): void {
     const container = this.layer.getContainer();
-    const layerService = container.get<ILayerService>(TYPES.ILayerService);
+    const layerService = container.layerService;
     const layer = this.layer;
     // 瓦片图层的拾取绘制
     if (layer.tileLayer) {
       return layer.tileLayer.pickRender(target);
     }
+    // 渲染瓦片图层的拾取
     layer.hooks.beforePickingEncode.call();
     layerService.renderTileLayerMask(layer);
     layer.renderModels({
@@ -29,11 +22,9 @@ export default class BaseLayerPickService implements ILayerPickService {
     layer.hooks.afterPickingEncode.call();
   }
 
-  public pick(layer: ILayer, target: IInteractionTarget) {
+  public async pick(layer: ILayer, target: IInteractionTarget) {
     const container = this.layer.getContainer();
-    const pickingService = container.get<IPickingService>(
-      TYPES.IPickingService,
-    );
+    const pickingService = container.pickingService;
     if (layer.type === 'RasterLayer') {
       return this.pickRasterLayer(layer, target);
     }
@@ -43,16 +34,10 @@ export default class BaseLayerPickService implements ILayerPickService {
     return pickingService.pickFromPickingFBO(layer, target);
   }
 
-  public pickRasterLayer(
-    layer: ILayer,
-    target: IInteractionTarget,
-    parent?: ILayer,
-  ) {
+  public pickRasterLayer(layer: ILayer, target: IInteractionTarget, parent?: ILayer) {
     const container = this.layer.getContainer();
-    const pickingService = container.get<IPickingService>(
-      TYPES.IPickingService,
-    );
-    const mapService = container.get<IMapService>(TYPES.IMapService);
+    const pickingService = container.pickingService;
+    const mapService = container.mapService;
     const extent = this.layer.getSource().extent;
     const isPick = lngLatInExtent(target.lngLat, extent);
     const layerTarget = {
@@ -65,19 +50,12 @@ export default class BaseLayerPickService implements ILayerPickService {
     };
     const adviceTarget = parent ? parent : layer;
     if (isPick) {
-      const rasterValue = this.readRasterValue(
-        layer,
-        extent,
-        mapService,
-        target.x,
-        target.y,
-      );
+      const rasterValue = this.readRasterValue(layer, extent, mapService, target.x, target.y);
       layerTarget.rasterValue = rasterValue;
       pickingService.triggerHoverOnLayer(adviceTarget, layerTarget);
       return true;
     } else {
-      layerTarget.type =
-        target.type === 'mousemove' ? 'mouseout' : 'un' + target.type;
+      layerTarget.type = target.type === 'mousemove' ? 'mouseout' : 'un' + target.type;
       pickingService.triggerHoverOnLayer(adviceTarget, {
         ...layerTarget,
         type: 'unpick',

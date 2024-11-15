@@ -1,16 +1,10 @@
-// import Ajv from 'ajv';
-import { injectable } from 'inversify';
-import { merge } from 'lodash';
-import 'reflect-metadata';
-import {
-  ILayerAttributesOption,
-  ILayerConfig,
-  MaskOperation,
-} from '../layer/ILayerService';
-import { IRenderConfig } from '../renderer/IRendererService';
-import { IGlobalConfigService, ISceneConfig } from './IConfigService';
+import { lodashUtil } from '@antv/l7-utils';
+import type { ILayerAttributesOption, ILayerConfig } from '../layer/ILayerService';
+import { MaskOperation } from '../layer/ILayerService';
+import type { IRenderConfig } from '../renderer/IRendererService';
+import type { IGlobalConfigService, ISceneConfig } from './IConfigService';
 import WarnInfo from './warnInfo';
-
+const { merge } = lodashUtil;
 /**
  * 场景默认配置项
  */
@@ -20,7 +14,6 @@ const defaultSceneConfig: Partial<ISceneConfig & IRenderConfig> = {
   logoVisible: true,
   antialias: true,
   stencil: true,
-  isMini: false,
   preserveDrawingBuffer: false,
   pickBufferScale: 1.0,
   fitBoundsOptions: {
@@ -82,8 +75,6 @@ const defaultLayerConfig: Partial<ILayerConfig> = {
   activeMix: 0,
   selectColor: 'blue',
   selectMix: 0,
-  enableTAA: false,
-  jitterScale: 1,
   enableLighting: false,
   animateOption: {
     enable: false,
@@ -100,7 +91,6 @@ const defaultLayerConfig: Partial<ILayerConfig> = {
 //   verbose: true,
 // });
 
-@injectable()
 export default class GlobalConfigService implements IGlobalConfigService {
   /**
    * 全部场景配置项缓存
@@ -171,11 +161,7 @@ export default class GlobalConfigService implements IGlobalConfigService {
     return this.layerConfigCache[layerId];
   }
 
-  public setLayerConfig(
-    sceneId: string,
-    layerId: string,
-    config: Partial<ILayerConfig>,
-  ) {
+  public setLayerConfig(sceneId: string, layerId: string, config: Partial<ILayerConfig>) {
     // @ts-ignore
     this.layerConfigCache[layerId] = {
       ...merge({}, this.sceneConfigCache[sceneId], defaultLayerConfig, config),
@@ -186,10 +172,7 @@ export default class GlobalConfigService implements IGlobalConfigService {
     return this.layerAttributeConfigCache[layerId];
   }
 
-  public setAttributeConfig(
-    layerId: string,
-    attr: Partial<ILayerAttributesOption>,
-  ) {
+  public setAttributeConfig(layerId: string, attr: Partial<ILayerAttributesOption>) {
     // TODO
     this.layerAttributeConfigCache[layerId] = {
       ...this.layerAttributeConfigCache[layerId],

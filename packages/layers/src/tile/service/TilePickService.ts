@@ -1,14 +1,12 @@
-import {
+import type {
   IInteractionTarget,
   ILayer,
   ILayerService,
-  IPickingService,
   ITile,
   ITilePickService,
-  TYPES,
 } from '@antv/l7-core';
 import { decodePickingColor, encodePickingColor } from '@antv/l7-utils';
-import { TileLayerService } from './TileLayerService';
+import type { TileLayerService } from './TileLayerService';
 import { TileSourceService } from './TileSourceService';
 export interface ITilePickServiceOptions {
   layerService: ILayerService;
@@ -24,11 +22,7 @@ export class TilePickService implements ITilePickService {
   private tileSourceService: TileSourceService;
   private parent: ILayer;
   private tilePickID = new Map();
-  constructor({
-    layerService,
-    tileLayerService,
-    parent,
-  }: ITilePickServiceOptions) {
+  constructor({ layerService, tileLayerService, parent }: ITilePickServiceOptions) {
     this.layerService = layerService;
     this.tileLayerService = tileLayerService;
     this.parent = parent;
@@ -44,20 +38,14 @@ export class TilePickService implements ITilePickService {
     }
   }
 
-  public pick(layer: ILayer, target: IInteractionTarget) {
+  public async pick(layer: ILayer, target: IInteractionTarget) {
     const container = this.parent.getContainer();
-    const pickingService = container.get<IPickingService>(
-      TYPES.IPickingService,
-    );
+    const pickingService = container.pickingService;
     if (layer.type === 'RasterLayer') {
       const tile = this.tileLayerService.getVisibleTileBylngLat(target.lngLat);
       if (tile && tile.getMainLayer() !== undefined) {
         const pickLayer = tile.getMainLayer() as ILayer;
-        return pickLayer.layerPickService.pickRasterLayer(
-          pickLayer,
-          target,
-          this.parent,
-        );
+        return pickLayer.layerPickService.pickRasterLayer(pickLayer, target, this.parent);
       }
       return false;
     }
@@ -123,9 +111,7 @@ export class TilePickService implements ITilePickService {
   /** 从瓦片中根据数据 */
   public getFeatureById(pickedFeatureIdx: number) {
     // 提取当前可见瓦片
-    const tiles = this.tileLayerService
-      .getTiles()
-      .filter((tile: ITile) => tile.visible);
+    const tiles = this.tileLayerService.getTiles().filter((tile: ITile) => tile.visible);
     // 提取当前可见瓦片中匹配 ID 的 feature 列表
     const features: any[] = [];
     tiles.forEach((tile: ITile) => {
@@ -142,11 +128,7 @@ export class TilePickService implements ITilePickService {
 
   // Tip: for interface define
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  public pickRasterLayer(
-    layer: ILayer,
-    target: IInteractionTarget,
-    parent?: ILayer,
-  ) {
+  public pickRasterLayer() {
     return false;
   }
 }

@@ -2,7 +2,7 @@
  * @desc 由于 regl 使用大量字符串而非 WebGL 常量，因此需要映射
  */
 import { gl } from '@antv/l7-core';
-import regl from 'l7regl';
+import type regl from 'regl';
 
 // @see https://github.com/regl-project/regl/blob/gh-pages/lib/constants/primitives.json
 export const primitiveMap: {
@@ -33,17 +33,10 @@ export const usageMap: {
 };
 
 export const dataTypeMap: {
-  [key: string]:
-    | 'int8'
-    | 'int16'
-    | 'int32'
-    | 'uint8'
-    | 'uint16'
-    | 'uint32'
-    | 'float';
+  [key: string]: 'int8' | 'int16' | 'int32' | 'uint8' | 'uint16' | 'uint32' | 'float';
 } = {
   [gl.BYTE]: 'int8',
-  [gl.UNSIGNED_INT]: 'int16',
+  // [gl.UNSIGNED_INT]: 'int16',
   [gl.INT]: 'int32',
   [gl.UNSIGNED_BYTE]: 'uint8',
   [gl.UNSIGNED_SHORT]: 'uint16',

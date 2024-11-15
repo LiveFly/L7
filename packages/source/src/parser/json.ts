@@ -1,15 +1,10 @@
 // @ts-ignore
-import {
-  IJsonData,
-  IParseDataItem,
-  IParserCfg,
-  IParserData,
-} from '@antv/l7-core';
+import type { IJsonData, IParseDataItem, IParserCfg, IParserData } from '@antv/l7-core';
 // @ts-ignore
-import rewind from '@mapbox/geojson-rewind';
-import { Feature, Geometries, Properties } from '@turf/helpers';
+import type { Feature, Geometries, Properties } from '@turf/helpers';
 import { getCoords } from '@turf/invariant';
 import { flattenEach } from '@turf/meta';
+import { geojsonRewind } from '../utils/util';
 
 export default function json(data: IJsonData, cfg: IParserCfg): IParserData {
   const { x, y, x1, y1, coordinates, geometry } = cfg;
@@ -33,21 +28,18 @@ export default function json(data: IJsonData, cfg: IParserCfg): IParserData {
         );
       })
       .forEach((col, index) => {
-        const rewindGeometry = rewind({ ...col[geometry] }, true);
+        const rewindGeometry = geojsonRewind(col[geometry]);
         // multi feature 情况拆分
-        flattenEach(
-          rewindGeometry,
-          (currentFeature: Feature<Geometries, Properties>) => {
-            const coord = getCoords(currentFeature);
-            const dataItem = {
-              ...col,
-              _id: index,
-              coordinates: coord,
-            };
+        flattenEach(rewindGeometry, (currentFeature: Feature<Geometries, Properties>) => {
+          const coord = getCoords(currentFeature);
+          const dataItem = {
+            ...col,
+            _id: index,
+            coordinates: coord,
+          };
 
-            resultData.push(dataItem);
-          },
-        );
+          resultData.push(dataItem);
+        });
       });
 
     return {
@@ -62,20 +54,17 @@ export default function json(data: IJsonData, cfg: IParserCfg): IParserData {
     // GeoJson coordinates 数据
     // 仅支持 Point LineString Polygon 三种 coordinates
     if (coordinates) {
-      let type = 'Polygon';
+      let type: 'Point' | 'LineString' | 'Polygon' = 'Polygon';
       if (!Array.isArray(coordinates[0])) {
         type = 'Point';
       }
       if (Array.isArray(coordinates[0]) && !Array.isArray(coordinates[0][0])) {
         type = 'LineString';
       }
-      const rewindGeometry = rewind(
-        {
-          type,
-          coordinates: [...col[coordinates]],
-        },
-        true,
-      );
+      const rewindGeometry = geojsonRewind({
+        type,
+        coordinates: col[coordinates as string],
+      });
       coords = rewindGeometry.coordinates;
     } else if (x && y && x1 && y1) {
       // 起终点数据

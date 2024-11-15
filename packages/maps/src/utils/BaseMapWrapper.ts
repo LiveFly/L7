@@ -1,15 +1,12 @@
-import {
+import type {
   IGlobalConfigService,
   IMapConfig,
   IMapService,
   IMapWrapper,
-  lazyInject,
-  TYPES,
+  L7Container,
 } from '@antv/l7-core';
-import { Container } from 'inversify';
 export default class BaseMapWrapper<RawMap> implements IMapWrapper {
-  @lazyInject(TYPES.IGlobalConfigService)
-  protected readonly configService: IGlobalConfigService;
+  protected configService: IGlobalConfigService;
 
   protected config: Partial<IMapConfig>;
 
@@ -17,28 +14,17 @@ export default class BaseMapWrapper<RawMap> implements IMapWrapper {
     this.config = config;
   }
 
-  public setContainer(
-    sceneContainer: Container,
-    id: string | HTMLDivElement,
-    canvas?: HTMLCanvasElement,
-    hasBaseMap?: boolean,
-  ) {
-    // 绑定用户传入的原始地图参数
-    sceneContainer.bind<Partial<IMapConfig>>(TYPES.MapConfig).toConstantValue({
+  public setContainer(sceneContainer: L7Container, id: string | HTMLDivElement) {
+    this.configService = sceneContainer.globalConfigService;
+    sceneContainer.mapConfig = {
       ...this.config,
       id,
-      canvas,
-      hasBaseMap,
-    });
-    sceneContainer
-      .bind<IMapService<RawMap>>(TYPES.IMapService)
-      .to(this.getServiceConstructor())
-      .inSingletonScope();
+    };
+    // @ts-ignore
+    sceneContainer.mapService = new (this.getServiceConstructor())(sceneContainer);
   }
 
-  protected getServiceConstructor(): new (
-    ...args: any[]
-  ) => IMapService<RawMap> {
+  protected getServiceConstructor(): new (...args: any[]) => IMapService<RawMap> {
     throw new Error('Method not implemented.');
   }
 }

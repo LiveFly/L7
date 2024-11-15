@@ -1,27 +1,17 @@
-import {
-  IDebugLog,
-  ILayer,
-  ILayerPlugin,
-  ILayerStage,
-  IMapService,
-  TYPES,
-} from '@antv/l7-core';
+import type { ILayer, ILayerPlugin, IMapService } from '@antv/l7-core';
+import { IDebugLog, ILayerStage } from '@antv/l7-core';
 import Source from '@antv/l7-source';
-import { injectable } from 'inversify';
-import 'reflect-metadata';
 
-@injectable()
 export default class DataSourcePlugin implements ILayerPlugin {
   protected mapService: IMapService;
   public apply(layer: ILayer) {
-    this.mapService = layer.getContainer().get<IMapService>(TYPES.IMapService);
+    this.mapService = layer.getContainer().mapService;
     layer.hooks.init.tapPromise('DataSourcePlugin', async () => {
       layer.log(IDebugLog.SourceInitStart, ILayerStage.INIT);
       let source = layer.getSource();
       if (!source) {
         // Tip: 用户没有传入 source 的时候使用图层的默认数据
-        const { data, options } =
-          layer.sourceOption || layer.defaultSourceConfig;
+        const { data, options } = layer.sourceOption || layer.defaultSourceConfig;
         source = new Source(data, options);
         layer.setSource(source);
       }

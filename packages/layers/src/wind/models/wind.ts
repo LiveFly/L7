@@ -1,6 +1,4 @@
-import {
-  AttributeType,
-  gl,
+import type {
   IEncodeFeature,
   IModel,
   IModelUniform,
@@ -8,13 +6,15 @@ import {
   ITexture2D,
   Point,
 } from '@antv/l7-core';
+import { AttributeType, gl } from '@antv/l7-core';
 import { FrequencyController } from '@antv/l7-utils';
 import BaseModel from '../../core/BaseModel';
-import { IWindLayerStyleOptions } from '../../core/interface';
+import type { IWindLayerStyleOptions } from '../../core/interface';
 import { RasterImageTriangulation } from '../../core/triangulation';
 import WindFrag from '../shaders/wind_frag.glsl';
 import WindVert from '../shaders/wind_vert.glsl';
-import { IWind, IWindProps, Wind } from './windRender';
+import type { IWind, IWindProps } from './windRender';
+import { Wind } from './windRender';
 
 const defaultRampColors = {
   0.0: '#3288bd',
@@ -28,6 +28,13 @@ const defaultRampColors = {
 };
 
 export default class WindModel extends BaseModel {
+  protected get attributeLocation() {
+    return Object.assign(super.attributeLocation, {
+      MAX: super.attributeLocation.MAX,
+      UV: 9,
+    });
+  }
+
   protected texture: ITexture2D;
   private colorModel: IModel;
   private wind: IWind;
@@ -116,6 +123,7 @@ export default class WindModel extends BaseModel {
       moduleName: 'wind',
       vertexShader: WindVert,
       fragmentShader: WindFrag,
+      defines: this.getDefines(),
       triangulation: RasterImageTriangulation,
       primitive: gl.TRIANGLES,
       depth: { enable: false },
@@ -128,14 +136,8 @@ export default class WindModel extends BaseModel {
     const p1 = this.mapService.lngLatToPixel(this.imageCoords[0]);
     const p2 = this.mapService.lngLatToPixel(this.imageCoords[1]);
 
-    const imageWidth = Math.min(
-      Math.floor((p2.x - p1.x) * this.sizeScale),
-      2048,
-    );
-    const imageHeight = Math.min(
-      Math.floor((p1.y - p2.y) * this.sizeScale),
-      2048,
-    );
+    const imageWidth = Math.min(Math.floor((p2.x - p1.x) * this.sizeScale), 2048);
+    const imageHeight = Math.min(Math.floor((p1.y - p2.y) * this.sizeScale), 2048);
     return { imageWidth, imageHeight };
   }
 
@@ -155,6 +157,7 @@ export default class WindModel extends BaseModel {
       type: AttributeType.Attribute,
       descriptor: {
         name: 'a_Uv',
+        shaderLocation: this.attributeLocation.UV,
         buffer: {
           // give the WebGL driver a hint that this buffer may change
           usage: gl.DYNAMIC_DRAW,
@@ -162,11 +165,7 @@ export default class WindModel extends BaseModel {
           type: gl.FLOAT,
         },
         size: 2,
-        update: (
-          feature: IEncodeFeature,
-          featureIdx: number,
-          vertex: number[],
-        ) => {
+        update: (feature: IEncodeFeature, featureIdx: number, vertex: number[]) => {
           return [vertex[3], vertex[4]];
         },
       },

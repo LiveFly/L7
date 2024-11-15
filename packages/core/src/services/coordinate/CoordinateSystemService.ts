@@ -1,35 +1,21 @@
 import { mat4, vec4 } from 'gl-matrix';
-import { inject, injectable } from 'inversify';
-import 'reflect-metadata';
-import { TYPES } from '../../types';
 import { getDistanceScales } from '../../utils/project';
-import { ICameraService } from '../camera/ICameraService';
-// import { IMapService } from '../map/IMapService'
-import {
-  CoordinateSystem,
-  ICoordinateSystemService,
-} from './ICoordinateSystemService';
+import type { ICameraService } from '../camera/ICameraService';
+import type { ICoordinateSystemService } from './ICoordinateSystemService';
+import { CoordinateSystem } from './ICoordinateSystemService';
 
 const VECTOR_TO_POINT_MATRIX = [1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0];
 
-@injectable()
-export default class CoordinateSystemService
-  implements ICoordinateSystemService
-{
-  public needRefresh: boolean = true;
-  @inject(TYPES.ICameraService)
-  private readonly cameraService: ICameraService;
+export default class CoordinateSystemService implements ICoordinateSystemService {
+  constructor(private cameraService: ICameraService) {}
 
-  // map.getCenter
-  // @inject(TYPES.IMapService)
-  // private readonly mapService: IMapService
+  public needRefresh: boolean = true;
 
   /**
    * 1. Web 墨卡托坐标系
    * 2. 偏移经纬度，用于解决高精度抖动问题
    * 3. 瓦片坐标，用于数据瓦片
    * 4. 常规世界坐标系，用于常规 2D/3D 可视化场景
-   * 5. P20 坐标系，高德地图使用
    * @see https://yuque.antfin-inc.com/yuqi.pyq/fgetpa/doml91
    */
   private coordinateSystem: CoordinateSystem;
@@ -71,7 +57,6 @@ export default class CoordinateSystemService
     //   return;
     // }
     const zoom = this.cameraService.getZoom();
-    const zoomScale = this.cameraService.getZoomScale();
     const center = offsetCenter ? offsetCenter : this.cameraService.getCenter();
 
     // 计算像素到米以及经纬度之间的转换
@@ -86,16 +71,11 @@ export default class CoordinateSystemService
     this.pixelsPerDegree = pixelsPerDegree;
     this.pixelsPerDegree2 = [0, 0, 0];
 
-    if (
-      this.coordinateSystem === CoordinateSystem.LNGLAT ||
-      this.coordinateSystem === CoordinateSystem.P20
-    ) {
+    if (this.coordinateSystem === CoordinateSystem.LNGLAT) {
       // 继续使用相机服务计算的 VP 矩阵
       this.cameraService.setViewProjectionMatrix(undefined);
     } else if (this.coordinateSystem === CoordinateSystem.LNGLAT_OFFSET) {
       this.calculateLnglatOffset(center, zoom);
-    } else if (this.coordinateSystem === CoordinateSystem.P20_OFFSET) {
-      this.calculateLnglatOffset(center, zoom, zoomScale, true);
     }
     this.needRefresh = false;
 
@@ -187,9 +167,7 @@ export default class CoordinateSystemService
     );
 
     // 重新计算相机 VP 矩阵
-    this.cameraService.setViewProjectionMatrix(
-      viewProjectionMatrix as unknown as number[],
-    );
+    this.cameraService.setViewProjectionMatrix(viewProjectionMatrix as unknown as number[]);
 
     this.pixelsPerMeter = ppm;
     this.pixelsPerDegree = ppd;

@@ -1,7 +1,12 @@
-import { IBuffer } from './IBuffer';
+import type { IBuffer } from './IBuffer';
 
 export interface IAttributeInitializationOptions {
   buffer: IBuffer;
+
+  /**
+   * layout(location = x)
+   */
+  shaderLocation?: number;
 
   /**
    * vertexAttribPointer 单位为 byte，默认值均为 0

@@ -1,28 +1,45 @@
-import {
-  AttributeType,
-  gl,
-  IEncodeFeature,
-  IModel,
-  IModelUniform,
-} from '@antv/l7-core';
+import type { IEncodeFeature, IModel, IModelUniform } from '@antv/l7-core';
+import { AttributeType, gl } from '@antv/l7-core';
 import BaseModel from '../../core/BaseModel';
-import { IHeatMapLayerStyleOptions } from '../../core/interface';
+import type { IHeatMapLayerStyleOptions } from '../../core/interface';
 import { PointExtrudeTriangulation } from '../../core/triangulation';
-import heatmapGrid3dVert from '../shaders/hexagon_3d_vert.glsl';
-import heatmapGridFrag from '../shaders/hexagon_frag.glsl';
+import grid_3d_frag from '../shaders/grid3d/grid_3d_frag.glsl';
+import grid_3d_vert from '../shaders/grid3d/grid_3d_vert.glsl';
 export default class Grid3DModel extends BaseModel {
+  protected get attributeLocation() {
+    return Object.assign(super.attributeLocation, {
+      MAX: super.attributeLocation.MAX,
+      SIZE: 9,
+      POS: 10,
+      NORMAL: 11,
+    });
+  }
+
   public getUninforms(): IModelUniform {
-    const { opacity, coverage, angle } =
-      this.layer.getLayerConfig() as IHeatMapLayerStyleOptions;
+    const commoninfo = this.getCommonUniformsInfo();
+    const attributeInfo = this.getUniformsBufferInfo(this.getStyleAttribute());
+    this.updateStyleUnifoms();
     return {
-      u_opacity: opacity || 1.0,
-      u_coverage: coverage || 1.0,
-      u_angle: angle || 0,
-      u_radius: [
-        this.layer.getSource().data.xOffset,
-        this.layer.getSource().data.yOffset,
-      ],
+      ...commoninfo.uniformsOption,
+      ...attributeInfo.uniformsOption,
     };
+  }
+
+  protected getCommonUniformsInfo(): {
+    uniformsArray: number[];
+    uniformsLength: number;
+    uniformsOption: { [key: string]: any };
+  } {
+    const { opacity, coverage, angle } = this.layer.getLayerConfig() as IHeatMapLayerStyleOptions;
+    const commonOptions = {
+      u_radius: [this.layer.getSource().data.xOffset, this.layer.getSource().data.yOffset],
+      u_opacity: opacity || 1.0,
+      u_coverage: coverage || 0.9,
+      u_angle: angle || 0,
+    };
+
+    const commonBufferInfo = this.getUniformsBufferInfo(commonOptions);
+    return commonBufferInfo;
   }
 
   public async initModels(): Promise<IModel[]> {
@@ -30,10 +47,12 @@ export default class Grid3DModel extends BaseModel {
   }
 
   public async buildModels(): Promise<IModel[]> {
+    this.initUniformsBuffer();
     const model = await this.layer.buildLayerModel({
       moduleName: 'heatmapGrid3d',
-      vertexShader: heatmapGrid3dVert,
-      fragmentShader: heatmapGridFrag,
+      vertexShader: grid_3d_vert,
+      fragmentShader: grid_3d_frag,
+      defines: this.getDefines(),
       triangulation: PointExtrudeTriangulation,
       primitive: gl.TRIANGLES,
       depth: { enable: true },
@@ -45,6 +64,7 @@ export default class Grid3DModel extends BaseModel {
       name: 'size',
       type: AttributeType.Attribute,
       descriptor: {
+        shaderLocation: this.attributeLocation.SIZE,
         name: 'a_Size',
         buffer: {
           usage: gl.DYNAMIC_DRAW,
@@ -64,6 +84,7 @@ export default class Grid3DModel extends BaseModel {
       type: AttributeType.Attribute,
       descriptor: {
         name: 'a_Normal',
+        shaderLocation: this.attributeLocation.NORMAL,
         buffer: {
           usage: gl.STATIC_DRAW,
           data: [],
@@ -86,6 +107,7 @@ export default class Grid3DModel extends BaseModel {
       type: AttributeType.Attribute,
       descriptor: {
         name: 'a_Pos',
+        shaderLocation: this.attributeLocation.POS,
         buffer: {
           usage: gl.DYNAMIC_DRAW,
           data: [],
@@ -93,11 +115,7 @@ export default class Grid3DModel extends BaseModel {
         },
         size: 3,
         update: (feature: IEncodeFeature) => {
-          const coordinates = (
-            feature.version === 'GAODE2.x'
-              ? feature.originCoordinates
-              : feature.coordinates
-          ) as number[];
+          const coordinates = feature.coordinates as number[];
           return [coordinates[0], coordinates[1], 0];
         },
       },

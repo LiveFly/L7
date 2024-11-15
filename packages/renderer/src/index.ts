@@ -1,6 +1,4 @@
-/**
- *
- */
+import DeviceRendererService from './device';
 import ReglRendererService from './regl';
 
-export { ReglRendererService };
+export { DeviceRendererService, ReglRendererService };

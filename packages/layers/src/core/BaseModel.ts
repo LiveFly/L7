@@ -1,14 +1,14 @@
-import {
-  BlendType,
+import type {
   IAnimateOption,
   IAttribute,
   IBlendOptions,
+  IBuffer,
   ICameraService,
   IElements,
+  IEncodeFeature,
   IFontService,
   IGlobalConfigService,
   IIconService,
-  IInject,
   ILayer,
   ILayerConfig,
   ILayerModel,
@@ -17,37 +17,31 @@ import {
   IModel,
   IModelUniform,
   IPickingService,
-  IRendererService,
   IRenderOptions,
+  IRendererService,
   IShaderModuleService,
   IStencilOptions,
   IStyleAttributeService,
   ITexture2D,
   ITexture2DInitializationOptions,
-  lazyInject,
-  MaskOperation,
-  StencilType,
+  ShaderDefine,
+  ShaderInject,
   Triangulation,
-  TYPES,
 } from '@antv/l7-core';
-import { rgb2arr } from '@antv/l7-utils';
+import { AttributeType, BlendType, MaskOperation, StencilType, gl } from '@antv/l7-core';
+import { fp64LowPart, rgb2arr } from '@antv/l7-utils';
 import { BlendTypes } from '../utils/blend';
 import { getStencil, getStencilMask } from '../utils/stencil';
-import { getCommonStyleAttributeOptions } from './CommonStyleAttribute';
-
+import { COMMON_ATTRIBUTE_LOCATION, getCommonStyleAttributeOptions } from './CommonStyleAttribute';
+import { DefaultUniformStyleType, DefaultUniformStyleValue } from './constant';
+import { MultipleOfFourNumber } from './utils';
 export type styleSingle =
   | number
   | string
   | [string, (single: any) => number]
   | [string, [number, number]];
-export type styleOffset =
-  | string
-  | [number, number]
-  | [string, (single: any) => number];
-export type styleColor =
-  | string
-  | [string, (single: any) => string]
-  | [string, [string, string]];
+export type styleOffset = string | [number, number] | [string, (single: any) => number];
+export type styleColor = string | [string, (single: any) => string] | [string, [string, string]];
 export interface IDataTextureFrame {
   data: number[];
   width: number;
@@ -59,57 +53,34 @@ export interface ICellProperty {
   count: number;
 }
 
+type AttributeLayoutLocationType = typeof COMMON_ATTRIBUTE_LOCATION & Record<string, number>;
+
+// 属性索引宏定义前缀，使用命名空间避免 define 名称重复情况
+const DEFINE_ATTRIBUTE_LOCATION_PREFIX = 'ATTRIBUTE_LOCATION_';
+
 // eslint-disable-next-line @typescript-eslint/no-unused-vars
-export default class BaseModel<ChildLayerStyleOptions = {}>
-  implements ILayerModel
-{
+export default class BaseModel<ChildLayerStyleOptions = {}> implements ILayerModel {
   public triangulation: Triangulation;
+  public uniformBuffers: IBuffer[] = [];
+  public textures: ITexture2D[] = [];
+  /**
+   * Attribute Layout Location in Shader
+   */
+  protected get attributeLocation(): AttributeLayoutLocationType {
+    return { ...COMMON_ATTRIBUTE_LOCATION };
+  }
 
   // style texture data mapping
-  public createTexture2D: (
-    options: ITexture2DInitializationOptions,
-  ) => ITexture2D;
+  public createTexture2D: (options: ITexture2DInitializationOptions) => ITexture2D;
   public preStyleAttribute: Record<string, any> = {};
   protected encodeStyleAttribute: Record<string, boolean> = {};
   protected layer: ILayer;
   protected dataTexture: ITexture2D; // 用于数据传递的数据纹理
   protected DATA_TEXTURE_WIDTH: number; // 默认有多少列（宽度）
-  protected rowCount: number; // 计算得到的当前数据纹理有多少行（高度）
-  protected cacheStyleProperties: {
-    // 记录存储上一次样式字段的值
-    thetaOffset: styleSingle | undefined;
-    opacity: styleSingle | undefined;
-    strokeOpacity: styleSingle | undefined;
-    strokeWidth: styleSingle | undefined;
-    stroke: styleColor | undefined;
-    offsets: styleOffset | undefined;
-  };
-  protected cellLength: number; // 单个 cell 的长度
-  protected cellProperties: ICellProperty[]; // 需要进行数据映射的属性集合
-  protected cellTypeLayout: number[];
-  protected stylePropertiesExist: {
-    // 记录 style 属性是否存在的中间变量
-    hasThetaOffset: number;
-    hasOpacity: number;
-    hasStrokeOpacity: number;
-    hasStrokeWidth: number;
-    hasStroke: number;
-    hasOffsets: number;
-  };
   protected dataTextureTest: boolean;
 
-  @lazyInject(TYPES.IGlobalConfigService)
   protected readonly configService: IGlobalConfigService;
-
-  // @lazyInject(TYPES.IIconService)
-  // protected readonly iconService: IIconService;
-
-  // @lazyInject(TYPES.IFontService)
-  // protected readonly fontService: IFontService;
-
-  // @lazyInject(TYPES.IShaderModuleService)
   protected shaderModuleService: IShaderModuleService;
-
   protected rendererService: IRendererService;
   protected iconService: IIconService;
   protected fontService: IFontService;
@@ -119,37 +90,25 @@ export default class BaseModel<ChildLayerStyleOptions = {}>
   protected layerService: ILayerService;
   protected pickingService: IPickingService;
 
+  protected attributeUnifoms: IBuffer; // 支持数据映射的buffer
+  protected commonUnifoms: IBuffer; // 不支持数据映射的buffer
+
   // style texture data mapping
 
   constructor(layer: ILayer) {
     this.layer = layer;
-    this.rendererService = layer
-      .getContainer()
-      .get<IRendererService>(TYPES.IRendererService);
-    this.pickingService = layer
-      .getContainer()
-      .get<IPickingService>(TYPES.IPickingService);
+    this.configService = layer.getContainer().globalConfigService;
+    this.rendererService = layer.getContainer().rendererService;
+    this.pickingService = layer.getContainer().pickingService;
 
-    this.shaderModuleService = layer
-      .getContainer()
-      .get<IShaderModuleService>(TYPES.IShaderModuleService);
+    this.shaderModuleService = layer.getContainer().shaderModuleService;
 
-    this.styleAttributeService = layer
-      .getContainer()
-      .get<IStyleAttributeService>(TYPES.IStyleAttributeService);
-    this.mapService = layer.getContainer().get<IMapService>(TYPES.IMapService);
-    this.iconService = layer
-      .getContainer()
-      .get<IIconService>(TYPES.IIconService);
-    this.fontService = layer
-      .getContainer()
-      .get<IFontService>(TYPES.IFontService);
-    this.cameraService = layer
-      .getContainer()
-      .get<ICameraService>(TYPES.ICameraService);
-    this.layerService = layer
-      .getContainer()
-      .get<ILayerService>(TYPES.ILayerService);
+    this.styleAttributeService = layer.getContainer().styleAttributeService;
+    this.mapService = layer.getContainer().mapService;
+    this.iconService = layer.getContainer().iconService;
+    this.fontService = layer.getContainer().fontService;
+    this.cameraService = layer.getContainer().cameraService;
+    this.layerService = layer.getContainer().layerService;
     // 初始化支持数据映射的 Style 属性
 
     this.registerStyleAttribute();
@@ -197,10 +156,33 @@ export default class BaseModel<ChildLayerStyleOptions = {}>
   public getDefaultStyle(): unknown {
     return {};
   }
+  // public getUninforms(): IModelUniform {
+  //   throw new Error('Method not implemented.');
+  // }
   public getUninforms(): IModelUniform {
-    throw new Error('Method not implemented.');
+    const commoninfo = this.getCommonUniformsInfo();
+    const attributeInfo = this.getUniformsBufferInfo(this.getStyleAttribute());
+    this.updateStyleUnifoms();
+    const result = {
+      ...attributeInfo.uniformsOption,
+      ...commoninfo.uniformsOption,
+    };
+    // 兼容 Regl Boolean 类型
+    Object.keys(result).forEach((key) => {
+      if (typeof result[key] === 'boolean') {
+        result[key] = result[key] ? 1 : 0;
+      }
+    });
+    //如果是regl渲染 需要在uniform中带上u_texture 暂时用this.rendererService.device判断
+    if (
+      !this.rendererService.hasOwnProperty('device') &&
+      this.textures &&
+      this.textures.length === 1
+    ) {
+      result['u_texture'] = this.textures[0];
+    }
+    return result;
   }
-
   public getAnimateUniforms(): IModelUniform {
     return {};
   }
@@ -228,6 +210,7 @@ export default class BaseModel<ChildLayerStyleOptions = {}>
   } {
     throw new Error('Method not implemented.');
   }
+  public prerender(): void {}
   // eslint-disable-next-line @typescript-eslint/no-unused-vars
   public render(renderOptions?: Partial<IRenderOptions>): void {
     throw new Error('Method not implemented.');
@@ -250,64 +233,39 @@ export default class BaseModel<ChildLayerStyleOptions = {}>
     }
   }
 
-  protected getInject(): IInject {
-    const encodeStyleAttribute = this.layer.encodeStyleAttribute;
-    let str = '';
-    const attrType: { [key: string]: any } = {
-      opacity: 'float',
-      stroke: 'vec4',
-      offsets: 'vec2',
-      textOffset: 'vec2',
-    };
-    this.layer.enableShaderEncodeStyles.forEach((key: string) => {
-      if (encodeStyleAttribute[key]) {
-        str += `#define USE_ATTRIBUTE_${key.toUpperCase()} 0.0; \n\n`;
-      }
-      str += `
-          #ifdef USE_ATTRIBUTE_${key.toUpperCase()}
-      attribute ${attrType[key]} a_${
-        key.charAt(0).toUpperCase() + key.slice(1)
-      };
-    #else
-      uniform ${attrType[key]} u_${key};
-    #endif\n
-    `;
-    });
-    let innerStr = '';
-    this.layer.enableShaderEncodeStyles.forEach((key) => {
-      innerStr += `\n
-#ifdef USE_ATTRIBUTE_${key.toUpperCase()}
-  ${attrType[key]} ${key}  = a_${key.charAt(0).toUpperCase() + key.slice(1)};
-#else
-  ${attrType[key]} ${key} = u_${key};
-#endif\n
-`;
-    });
+  protected getInject(): ShaderInject {
+    const shaderInject = getDynamicStyleInject(
+      this.layer.enableShaderEncodeStyles,
+      this.layer.encodeStyleAttribute,
+    );
 
-    return {
-      'vs:#decl': str,
-      'vs:#main-start': innerStr,
-    };
+    return shaderInject;
+  }
+
+  protected getDefines(): Record<string, ShaderDefine> {
+    // define atribute Layout Location
+    const atributeLocationDefines = Object.keys(this.attributeLocation).reduce<
+      Record<string, number>
+    >((result, key) => {
+      const normalizedKey = DEFINE_ATTRIBUTE_LOCATION_PREFIX + key;
+      result[normalizedKey] = this.attributeLocation[key];
+      return result;
+    }, {});
+
+    return { ...atributeLocationDefines };
   }
 
   // 获取数据映射样式
   protected getStyleAttribute() {
     const options: { [key: string]: any } = {};
     // TODO: 优化
-
-    const defualtValue: { [key: string]: any } = {
-      opacity: 1,
-      stroke: [1, 0, 0, 1],
-      offsets: [0, 0],
-    };
     this.layer.enableShaderEncodeStyles.forEach((key) => {
       if (!this.layer.encodeStyleAttribute[key]) {
         // 没有设置样式映射
         // @ts-ignore
         const keyValue = this.layer.getLayerConfig()[key];
 
-        let value =
-          typeof keyValue === 'undefined' ? defualtValue[key] : keyValue;
+        let value = typeof keyValue === 'undefined' ? DefaultUniformStyleValue[key] : keyValue;
         if (key === 'stroke') {
           value = rgb2arr(value);
         }
@@ -316,6 +274,7 @@ export default class BaseModel<ChildLayerStyleOptions = {}>
     });
     return options;
   }
+
   // 注册数据映射样式
   protected registerStyleAttribute() {
     Object.keys(this.layer.encodeStyleAttribute).forEach((key) => {
@@ -325,7 +284,158 @@ export default class BaseModel<ChildLayerStyleOptions = {}>
       }
     });
   }
+
+  /**
+   * 注册 Position 属性 64 位地位部分，当经纬度数据开启双精度浮点数使用，
+   * 避免大于 20层级以上出现数据偏移
+   */
+  protected registerPosition64LowAttribute(enable64bitPosition = true) {
+    // save low part for enabled double precision POSITION attribute
+    this.styleAttributeService.registerStyleAttribute({
+      name: 'position64Low',
+      type: AttributeType.Attribute,
+      descriptor: {
+        name: 'a_Position64Low',
+        shaderLocation: this.attributeLocation.POSITION_64LOW,
+        buffer: {
+          data: [],
+          type: gl.FLOAT,
+        },
+        size: 2,
+        update: (feature: IEncodeFeature, featureIdx: number, vertex: number[]) => {
+          return enable64bitPosition ? [fp64LowPart(vertex[0]), fp64LowPart(vertex[1])] : [0, 0];
+        },
+      },
+    });
+  }
+
   public updateEncodeAttribute(type: string, flag: boolean) {
     this.encodeStyleAttribute[type] = flag;
   }
+
+  public initUniformsBuffer() {
+    const attrUniforms = this.getUniformsBufferInfo(this.getStyleAttribute());
+    const commonUniforms = this.getCommonUniformsInfo();
+    if (attrUniforms.uniformsLength !== 0) {
+      this.attributeUnifoms = this.rendererService.createBuffer({
+        data: new Float32Array(MultipleOfFourNumber(attrUniforms.uniformsLength)).fill(0), // 长度需要大于等于 4
+        isUBO: true,
+        label: 'layerModelAttributeUnifoms',
+      });
+      this.uniformBuffers.push(this.attributeUnifoms);
+    }
+    if (commonUniforms.uniformsLength !== 0) {
+      this.commonUnifoms = this.rendererService.createBuffer({
+        data: new Float32Array(MultipleOfFourNumber(commonUniforms.uniformsLength)).fill(0),
+        isUBO: true,
+        label: 'layerModelCommonUnifoms',
+      });
+      this.uniformBuffers.push(this.commonUnifoms);
+    }
+  }
+  // 获取数据映射 uniform 信息
+  protected getUniformsBufferInfo(uniformsOption: { [key: string]: any }) {
+    let uniformsLength = 0;
+    const uniformsArray: number[] = [];
+    Object.values(uniformsOption).forEach((value: any) => {
+      if (Array.isArray(value)) {
+        uniformsArray.push(...value);
+        uniformsLength += value.length;
+      } else if (typeof value === 'number') {
+        // 排除纹理
+        uniformsArray.push(value);
+        uniformsLength += 1;
+      } else if (typeof value === 'boolean') {
+        uniformsArray.push(Number(value));
+        uniformsLength += 1;
+      }
+    });
+
+    return {
+      uniformsOption,
+      uniformsLength,
+      uniformsArray,
+    };
+  }
+  protected getCommonUniformsInfo(): {
+    uniformsArray: number[];
+    uniformsLength: number;
+    uniformsOption: { [key: string]: any };
+  } {
+    return {
+      uniformsLength: 0,
+      uniformsArray: [],
+      uniformsOption: {},
+    };
+  }
+
+  // 更新支持数据映射的uniform
+  public updateStyleUnifoms() {
+    const { uniformsArray } = this.getUniformsBufferInfo(this.getStyleAttribute());
+    const { uniformsArray: commonUniformsArray } = this.getCommonUniformsInfo();
+    this.attributeUnifoms?.subData({
+      offset: 0,
+      data: new Uint8Array(new Float32Array(uniformsArray).buffer),
+    });
+    this.commonUnifoms?.subData({
+      offset: 0,
+      data: new Uint8Array(new Float32Array(commonUniformsArray).buffer),
+    });
+  }
+}
+
+/**
+ * 获取动态注入参与数据映射 uniform/attribute
+ */
+function getDynamicStyleInject(
+  shaderEncodeStyles: string[],
+  styleAttribute: Record<string, any>,
+): ShaderInject {
+  const uniforms: string[] = [];
+  let vsDeclInjection = '';
+
+  // 支持数据映射的类型
+  shaderEncodeStyles.forEach((key) => {
+    const upperCaseKey = key.replace(/([a-z])([A-Z])/g, '$1_$2').toUpperCase();
+    const shaderDefineName = DEFINE_ATTRIBUTE_LOCATION_PREFIX + upperCaseKey;
+
+    if (styleAttribute[key]) {
+      // 配置了数据映射的类型
+      vsDeclInjection += `#define USE_ATTRIBUTE_${upperCaseKey} 0.0 \n`;
+    } else {
+      uniforms.push(`  ${DefaultUniformStyleType[key]} u_${key};`);
+    }
+
+    vsDeclInjection += `
+#ifdef USE_ATTRIBUTE_${upperCaseKey}
+layout(location = ${shaderDefineName}) in ${DefaultUniformStyleType[key]} a_${key.charAt(0).toUpperCase() + key.slice(1)};
+#endif \n`;
+  });
+
+  const fsDeclInjection = uniforms.length
+    ? `
+layout(std140) uniform AttributeUniforms {
+  ${uniforms.join('\n')}
+};\n`
+    : '';
+
+  vsDeclInjection += fsDeclInjection;
+
+  let vsMainInjection = '';
+  shaderEncodeStyles.forEach((key) => {
+    const upperCaseKey = key.replace(/([a-z])([A-Z])/g, '$1_$2').toUpperCase();
+    vsMainInjection += `
+  #ifdef USE_ATTRIBUTE_${upperCaseKey}
+    ${DefaultUniformStyleType[key]} ${key} = a_${key.charAt(0).toUpperCase() + key.slice(1)};
+  #else
+    ${DefaultUniformStyleType[key]} ${key} = u_${key};
+  #endif
+  `;
+  });
+
+  return {
+    'vs:#decl': vsDeclInjection,
+    'fs:#decl': fsDeclInjection,
+    'vs:#main-start': vsMainInjection,
+  };
 }

@@ -1,53 +1,49 @@
-import {
-  AttributeType,
-  gl,
-  IAnimateOption,
-  IEncodeFeature,
-  ILayerConfig,
-  IModel,
-  IModelUniform,
-} from '@antv/l7-core';
+import type { IAnimateOption, IEncodeFeature, ILayerConfig, IModel } from '@antv/l7-core';
+import { AttributeType, gl } from '@antv/l7-core';
 import BaseModel from '../../core/BaseModel';
-import { IPointLayerStyleOptions } from '../../core/interface';
+import type { IPointLayerStyleOptions } from '../../core/interface';
 import { GlobelPointFillTriangulation } from '../../core/triangulation';
 
-import pointFillFrag from '../shaders/earth/fill_frag.glsl';
-import pointFillVert from '../shaders/earth/fill_vert.glsl';
+import pointFillFrag from '../shaders/earthFill/earthFill_frag.glsl';
+import pointFillVert from '../shaders/earthFill/earthFill_vert.glsl';
 
-import { rgb2arr } from '@antv/l7-utils';
 import { mat4, vec3 } from 'gl-matrix';
+
 export default class FillModel extends BaseModel {
-  public getUninforms(): IModelUniform {
+  protected get attributeLocation() {
+    return Object.assign(super.attributeLocation, {
+      MAX: super.attributeLocation.MAX,
+      SIZE: 9,
+      SHAPE: 10,
+      EXTRUDE: 11,
+    });
+  }
+
+  protected getCommonUniformsInfo(): {
+    uniformsArray: number[];
+    uniformsLength: number;
+    uniformsOption: { [key: string]: any };
+  } {
     const {
-      opacity = 1,
       strokeOpacity = 1,
       strokeWidth = 0,
-      stroke = 'rgba(0,0,0,0)',
       // offsets = [0, 0],
       blend,
       blur = 0,
     } = this.layer.getLayerConfig() as IPointLayerStyleOptions;
-
-    return {
-      u_blur: blur,
+    this.layer.getLayerConfig() as ILayerConfig;
+    const commonOptions = {
       u_additive: blend === 'additive' ? 1.0 : 0.0,
-      u_opacity: opacity,
       u_stroke_opacity: strokeOpacity,
       u_stroke_width: strokeWidth,
-      u_stroke_color: rgb2arr(stroke),
-      // u_offsets: offsets,
+      u_blur: blur,
     };
-  }
-  public getAnimateUniforms(): IModelUniform {
-    const { animateOption = { enable: false } } =
-      this.layer.getLayerConfig() as ILayerConfig;
-    return {
-      u_animate: this.animateOption2Array(animateOption),
-      u_time: this.layer.getLayerAnimateTime(),
-    };
+    const commonBufferInfo = this.getUniformsBufferInfo(commonOptions);
+    return commonBufferInfo;
   }
 
   public async initModels(): Promise<IModel[]> {
+    this.initUniformsBuffer();
     return this.buildModels();
   }
 
@@ -58,8 +54,9 @@ export default class FillModel extends BaseModel {
       vertexShader: pointFillVert,
       fragmentShader: pointFillFrag,
       triangulation: GlobelPointFillTriangulation,
+      defines: this.getDefines(),
+      inject: this.getInject(),
       depth: { enable: true },
-
       blend: this.getBlend(),
     });
     return [model];
@@ -75,6 +72,7 @@ export default class FillModel extends BaseModel {
       type: AttributeType.Attribute,
       descriptor: {
         name: 'a_Extrude',
+        shaderLocation: this.attributeLocation.EXTRUDE,
         buffer: {
           // give the WebGL driver a hint that this buffer may change
           usage: gl.DYNAMIC_DRAW,
@@ -92,8 +90,7 @@ export default class FillModel extends BaseModel {
           const n1 = vec3.fromValues(0, 0, 1);
           const n2 = vec3.fromValues(x, 0, z);
 
-          const xzReg =
-            x >= 0 ? vec3.angle(n1, n2) : Math.PI * 2 - vec3.angle(n1, n2);
+          const xzReg = x >= 0 ? vec3.angle(n1, n2) : Math.PI * 2 - vec3.angle(n1, n2);
 
           const yReg = Math.PI * 2 - Math.asin(y / 100);
 
@@ -119,11 +116,7 @@ export default class FillModel extends BaseModel {
 
           const extrude = [...v1, ...v2, ...v3, ...v4];
           const extrudeIndex = (attributeIdx % 4) * 3;
-          return [
-            extrude[extrudeIndex],
-            extrude[extrudeIndex + 1],
-            extrude[extrudeIndex + 2],
-          ];
+          return [extrude[extrudeIndex], extrude[extrudeIndex + 1], extrude[extrudeIndex + 2]];
         },
       },
     });
@@ -134,6 +127,7 @@ export default class FillModel extends BaseModel {
       type: AttributeType.Attribute,
       descriptor: {
         name: 'a_Size',
+        shaderLocation: this.attributeLocation.SIZE,
         buffer: {
           // give the WebGL driver a hint that this buffer may change
           usage: gl.DYNAMIC_DRAW,
@@ -154,6 +148,7 @@ export default class FillModel extends BaseModel {
       type: AttributeType.Attribute,
       descriptor: {
         name: 'a_Shape',
+        shaderLocation: this.attributeLocation.SHAPE,
         buffer: {
           // give the WebGL driver a hint that this buffer may change
           usage: gl.DYNAMIC_DRAW,
