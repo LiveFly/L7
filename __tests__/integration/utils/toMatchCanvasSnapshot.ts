@@ -61,7 +61,6 @@ export function toMatchCanvasSnapshot(
   const actualPath = path.join(dir, `${name}-actual.png`);
   const expectedPath = path.join(dir, `${name}.png`);
   const diffPath = path.join(dir, `${name}-diff.png`);
-
   try {
     if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
     if (!fs.existsSync(expectedPath)) {
@@ -90,7 +89,7 @@ export function toMatchCanvasSnapshot(
         };
       }
       return {
-        message: () => `mismatch ${namePath} (error: ${error}) `,
+        message: () => `mismatch ${namePath} (error: ${error})`,
         pass: false,
       };
     }

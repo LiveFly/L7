@@ -17,7 +17,7 @@
     "check-format": "./scripts/format-check.sh",
     "format": "./scripts/format-fix.sh",
     "lint:ts": "./scripts/eslint-lint.sh",
-    "lint:ts-fix": "/scripts/eslint-fix.sh",
+    "lint:ts-fix": "./scripts/eslint-fix.sh",
     "lint:css": "stylelint 'packages/**/*.{css,less}'",
     "lint:css-fix": "stylelint --fix 'packages/**/*.{css,less}'",
     "test": "run-p test:unit test:integration",
@@ -70,7 +70,10 @@
     "react": "^18.2.0",
     "react-dom": "^18.2.0",
     "stats.js": "^0.17.0",
-    "three": "0.115.0"
+    "three": "0.115.0",
+    "@types/pixelmatch": "^5.2.5",
+    "pixelmatch": "5.3.0",
+    "pngjs": "^6.0.0"
   },
   "devDependencies": {
     "@antv/translator": "^1.0.1",

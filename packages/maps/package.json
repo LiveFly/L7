@@ -1,6 +1,6 @@
 {
   "name": "@antv/l7-maps",
-  "version": "2.22.3",
+  "version": "2.22.5",
   "description": "Maps for L7",
   "license": "MIT",
   "author": "https://github.com/orgs/antvis/people",
@@ -34,7 +34,8 @@
     "gl-matrix": "^3.1.0",
     "mapbox-gl": "^1.2.1",
     "maplibre-gl": "^3.5.2",
-    "viewport-mercator-project": "^6.2.1"
+    "viewport-mercator-project": "^6.2.1",
+    "pmtiles": "^2.7.2"
   },
   "devDependencies": {
     "@map-component/tmap-types": "^0.1.3",
