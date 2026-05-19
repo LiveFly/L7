@@ -20,15 +20,20 @@ import './logo.css';
 import { MapTheme } from './theme';
 
 const AMAP_VERSION = '2.0';
-const AMAP_API_KEY = 'f59bcf249433f8b05caaee19f349b3d7';
 const ZOOM_OFFSET = 1;
+// 默认的高德地图 Key，仅用于开发和演示，生产环境请使用自己的 Key
+// 申请地址: https://lbs.amap.com/api/javascript-web-api/guide/abc/prepare
+const DEFAULT_AMAP_KEY = 'f59bcf249433f8b05caaee19f349b3d7';
+
+// @ts-ignore 高德地图强制使用 WebGL,否则支付宝端内无法使用
+window.forceWebGL = true;
 
 const AMapEventMapV2: Record<string, string> = {
   contextmenu: 'rightclick',
   camerachange: 'viewchange',
 };
 
-export default class BMapService extends BaseMap<AMap.Map> {
+export default class AMapService extends BaseMap<AMap.Map> {
   protected viewport = new Viewport();
 
   public version = MapType.GAODE;
@@ -43,16 +48,23 @@ export default class BMapService extends BaseMap<AMap.Map> {
       style = 'light',
       minZoom = 0,
       maxZoom = 24,
-      token = AMAP_API_KEY,
+      token,
       mapInstance,
       plugin = [],
       ...rest
     } = this.config;
 
     if (!(window.AMap || mapInstance)) {
+      const amapKey = token || DEFAULT_AMAP_KEY;
+      if (!token) {
+        console.warn(
+          `%c${this.configService.getSceneWarninfo('MapToken')} 使用默认 Key，生产环境请配置自己的高德地图 Key！`,
+          'color: #873bf4;font-weigh:900;font-size: 14px;',
+        );
+      }
       plugin.push('Map3D');
       await AMapLoader.load({
-        key: token, // 申请好的Web端开发者Key，首次调用 load 时必填
+        key: amapKey, // 申请好的Web端开发者Key，首次调用 load 时必填
         version: AMAP_VERSION, // 指定要加载的 JSAPI 的版本
         plugins: plugin, // 需要使用的的插件列表，如比例尺'AMap.Scale'等
       });
@@ -81,16 +93,6 @@ export default class BMapService extends BaseMap<AMap.Map> {
         mapConstructorOptions.zoom += ZOOM_OFFSET;
       }
 
-      if (token === AMAP_API_KEY) {
-        (window as any)._AMapSecurityConfig = {
-          securityJsCode: '2653011adeb04230b3a26cc9a780a800',
-        };
-        console.warn(
-          `%c${this.configService.getSceneWarninfo('MapToken')}!`,
-          'color: #873bf4;font-weigh:900;font-size: 16px;',
-        );
-      }
-
       if (!id) {
         throw Error('No container id specified');
       }
@@ -109,6 +111,7 @@ export default class BMapService extends BaseMap<AMap.Map> {
     }
 
     this.syncInitViewPort();
+    this.bindPendingEvents();
   }
 
   private syncInitViewPort() {
@@ -137,6 +140,14 @@ export default class BMapService extends BaseMap<AMap.Map> {
 
   protected creatMapContainer(id: string | HTMLDivElement) {
     const wrapper = super.creatMapContainer(id);
+    // 确保 wrapper 有定位上下文，避免子元素 absolute 定位脱离预期位置
+    if (wrapper && getComputedStyle(wrapper).position === 'static') {
+      wrapper.style.position = 'relative';
+    }
+    // 如果 wrapper 没有高度，设置默认高度避免地图不显示
+    if (wrapper && wrapper.clientHeight === 0) {
+      wrapper.style.height = '300px';
+    }
     const amapdiv = document.createElement('div');
     amapdiv.style.cssText += `
        position: absolute;
@@ -178,6 +189,11 @@ export default class BMapService extends BaseMap<AMap.Map> {
     if (MapServiceEvent.indexOf(type) !== -1) {
       this.eventEmitter.on(type, handler);
     } else {
+      if (!this.map) {
+        // 地图尚未初始化，缓存事件，init 完成后重放
+        this.pendingHandlers.push({ type, handler });
+        return;
+      }
       this.map.on(AMapEventMapV2[type] || type, handler);
     }
   }
@@ -186,6 +202,13 @@ export default class BMapService extends BaseMap<AMap.Map> {
     if (MapServiceEvent.indexOf(type) !== -1) {
       this.eventEmitter.off(type, handler);
     } else {
+      if (!this.map) {
+        // 地图尚未初始化，从缓存中移除
+        this.pendingHandlers = this.pendingHandlers.filter(
+          (item) => !(item.type === type && item.handler === handler),
+        );
+        return;
+      }
       this.map.off(AMapEventMapV2[type] || type, handler);
     }
   }
@@ -329,12 +352,10 @@ export default class BMapService extends BaseMap<AMap.Map> {
     return this.map.setZoom(zoom + ZOOM_OFFSET);
   }
 
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   public setMaxZoom(max: number): void {
     throw new Error('Method not implemented.');
   }
 
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   public setMinZoom(min: number): void {
     throw new Error('Method not implemented.');
   }
@@ -423,6 +444,10 @@ export default class BMapService extends BaseMap<AMap.Map> {
     const renderCanvas = this.getContainer()?.getElementsByClassName(
       'amap-layer',
     )[0] as HTMLCanvasElement;
+    console.log('renderCanvas', renderCanvas);
+    if (!renderCanvas) {
+      throw new Error('地图尚未初始化完成，无法导出图片');
+    }
     const layersPng =
       type === 'jpg'
         ? (renderCanvas?.toDataURL('image/jpeg') as string)
@@ -435,6 +460,11 @@ export default class BMapService extends BaseMap<AMap.Map> {
     // 销毁地图可视化层的容器
     this.mapContainer?.parentNode?.removeChild(this.mapContainer);
 
+    // 清理 marker container
+    if (this.markerContainer && this.markerContainer.parentNode) {
+      this.markerContainer.parentNode.removeChild(this.markerContainer);
+    }
+
     // @ts-ignore
     delete window.initAMap;
 
@@ -442,7 +472,10 @@ export default class BMapService extends BaseMap<AMap.Map> {
     if ($jsapi) {
       document.head.removeChild($jsapi);
     }
-    this.map.destroy();
+    // map 实例可能尚未初始化完成（如 React StrictMode 双重渲染场景下提前 destroy）
+    if (this.map) {
+      this.map.destroy();
+    }
   }
 }
 

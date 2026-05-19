@@ -28,7 +28,6 @@ const EventMap: {
   zoomchange: 'zoomend',
 };
 
-const BMAP_API_KEY: string = 'zLhopYPPERGtpGOgimcdKcCimGRyyIsh';
 const BMAP_VERSION: string = '1.0';
 
 // TODO: 基于抽象类 BaseMap 实现，补全缺失方法，解决类型问题
@@ -86,7 +85,7 @@ export default class BMapService extends BaseMapService<BMapGL.Map> {
       id,
       center = [121.30654632240122, 31.25744185633306],
       zoom = 12,
-      token = BMAP_API_KEY,
+      token,
       mapInstance,
       version = BMAP_VERSION,
       mapSize = 10000,
@@ -99,8 +98,14 @@ export default class BMapService extends BaseMapService<BMapGL.Map> {
     this.simpleMapCoord.setSize(mapSize);
 
     if (!(window.BMapGL || mapInstance)) {
+      if (!token) {
+        console.warn(
+          `%c${this.configService.getSceneWarninfo('MapToken')}!`,
+          'color: #873bf4;font-weigh:900;font-size: 16px;',
+        );
+      }
       await BMapGLLoader.load({
-        key: token, // 申请好的Web端开发者Key，首次调用 load 时必填
+        key: token || '', // 申请好的Web端开发者Key，首次调用 load 时必填
         version: BMAP_VERSION, // 指定要加载的 JSAPI 的gl版本，缺省时默认为 1.0
       });
     }
@@ -124,13 +129,6 @@ export default class BMapService extends BaseMapService<BMapGL.Map> {
         maxZoom,
         ...rest,
       };
-
-      if (token === BMAP_API_KEY) {
-        console.warn(
-          `%c${this.configService.getSceneWarninfo('MapToken')}!`,
-          'color: #873bf4;font-weigh:900;font-size: 16px;',
-        );
-      }
 
       if (!id) {
         throw Error('No container id specified');
@@ -160,10 +158,19 @@ export default class BMapService extends BaseMapService<BMapGL.Map> {
       // @ts-ignore
       map.on('update', this.handleCameraChanged);
     }
+    this.bindPendingEvents();
   }
 
   public destroy(): void {
-    this.getMap().destroy();
+    // map 实例可能尚未初始化完成（如 React StrictMode 双重渲染场景下提前 destroy）
+    if (this.map) {
+      this.getMap().destroy();
+    }
+
+    // 清理 marker container（如果存在）
+    if (this.markerContainer && this.markerContainer.parentNode) {
+      this.markerContainer.parentNode.removeChild(this.markerContainer);
+    }
   }
 
   public onCameraChanged(callback: (viewport: IViewport) => void): void {
@@ -185,6 +192,12 @@ export default class BMapService extends BaseMapService<BMapGL.Map> {
   public on(type: string, handle: (...args: any[]) => void): void {
     if (MapServiceEvent.indexOf(type) !== -1) {
       this.eventEmitter.on(type, handle);
+      return;
+    }
+
+    if (!this.map) {
+      // 地图尚未初始化，缓存事件，init 完成后重放
+      this.pendingHandlers.push({ type, handler: handle });
       return;
     }
 
@@ -213,6 +226,14 @@ export default class BMapService extends BaseMapService<BMapGL.Map> {
   public off(type: string, handle: (...args: any[]) => void): void {
     if (MapServiceEvent.indexOf(type) !== -1) {
       this.eventEmitter.off(type, handle);
+      return;
+    }
+
+    if (!this.map) {
+      // 地图尚未初始化，从缓存中移除
+      this.pendingHandlers = this.pendingHandlers.filter(
+        (item) => !(item.type === type && item.handler === handle),
+      );
       return;
     }
 
@@ -380,19 +401,35 @@ export default class BMapService extends BaseMapService<BMapGL.Map> {
 
   public setMapStatus(option: Partial<IStatusOptions>): void {
     const map = this.getMap();
-    (Object.keys(option) as Array<keyof IStatusOptions>).map((status) => {
+    (Object.keys(option) as Array<keyof IStatusOptions>).forEach((status) => {
       switch (status) {
         case 'doubleClickZoom':
-          option.doubleClickZoom ? map.enableDoubleClickZoom() : map.disableDoubleClickZoom();
+          if (option.doubleClickZoom) {
+            map.enableDoubleClickZoom();
+          } else {
+            map.disableDoubleClickZoom();
+          }
           break;
         case 'dragEnable':
-          option.dragEnable ? map.enableDragging() : map.disableDragging();
+          if (option.dragEnable) {
+            map.enableDragging();
+          } else {
+            map.disableDragging();
+          }
           break;
         case 'keyboardEnable':
-          option.keyboardEnable ? map.enableKeyboard() : map.disableKeyboard();
+          if (option.keyboardEnable) {
+            map.enableKeyboard();
+          } else {
+            map.disableKeyboard();
+          }
           break;
         case 'resizeEnable':
-          option.resizeEnable ? map.enableAutoResize() : map.disableAutoResize();
+          if (option.resizeEnable) {
+            map.enableAutoResize();
+          } else {
+            map.disableAutoResize();
+          }
           break;
         case 'rotateEnable':
           if (option.rotateEnable) {
@@ -529,7 +566,7 @@ export default class BMapService extends BaseMapService<BMapGL.Map> {
     DOM.addClass(container, 'bmap-contianer--hide-logo');
   }
 
-  private initMapByConfig(config: Partial<IMapConfig<{}>>) {
+  private initMapByConfig(config: Partial<IMapConfig<object>>) {
     const { style, pitch = 0, rotation = 0, logoVisible = true } = config;
     if (style) {
       this.setMapStyle(style);

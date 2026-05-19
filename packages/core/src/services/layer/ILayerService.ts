@@ -396,6 +396,10 @@ export interface ILayer {
     data: any;
     options?: ISourceCFG;
   };
+  shapeOption: {
+    field: any;
+    values: any;
+  };
   multiPassRenderer: IMultiPassRenderer;
   // 初始化 layer 的时候指定 layer type 类型（）兼容空数据的情况
   layerType?: string | undefined;
@@ -580,6 +584,13 @@ export interface ILayer {
    * WebGL2 下更新 Layer 级 Uniform
    */
   getPickingUniformBuffer(): IBuffer;
+
+  /**
+   * 相对坐标系支持方法
+   */
+  getAbsoluteData(): IParseDataItem[];
+  getRelativeOrigin(): [number, number];
+  getOriginalExtent(): [number, number, number, number];
 }
 
 /**

@@ -6,7 +6,11 @@ import vitePluginString from 'vite-plugin-string';
 
 export default defineConfig({
   root: './examples/',
-  server: { port: 8080, open: '/' },
+  server: {
+    port: 8080,
+    open: '/',
+    allowedHosts: ['alipay.net'],
+  },
   base: './',
   resolve: {
     alias: {
@@ -27,6 +31,7 @@ export default defineConfig({
     react(),
     vitePluginString({
       compress: false,
+      include: ['**/*.vs', '**/*.fs', '**/*.vert', '**/*.frag', '**/*.glsl', '**/*.wgsl'],
     }),
     copy({
       targets: [
@@ -39,6 +44,22 @@ export default defineConfig({
     }),
   ],
   esbuild: {},
+  optimizeDeps: {
+    // 排除本地包，避免 esbuild 预构建时无法处理 GLSL 文件
+    exclude: [
+      '@antv/l7',
+      '@antv/l7-core',
+      '@antv/l7-maps',
+      '@antv/l7-layers',
+      '@antv/l7-component',
+      '@antv/l7-three',
+      '@antv/l7-map',
+      '@antv/l7-renderer',
+      '@antv/l7-scene',
+      '@antv/l7-source',
+      '@antv/l7-utils',
+    ],
+  },
   define: {
     'process.env.VERSION': JSON.stringify('1.0.0'),
     global: {},

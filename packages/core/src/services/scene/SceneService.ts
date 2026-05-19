@@ -1,7 +1,6 @@
 // @ts-ignore
 import { AsyncSeriesHook } from '@antv/async-hook';
 import { DOM } from '@antv/l7-utils';
-import elementResizeDetectorMaker from 'element-resize-detector';
 import { EventEmitter } from 'eventemitter3';
 import type { L7Container } from '../../inversify.config';
 import { createRendererContainer } from '../../utils/dom';
@@ -102,7 +101,7 @@ export default class Scene extends EventEmitter implements ISceneService {
 
   private markerContainer: HTMLElement;
 
-  private resizeDetector: elementResizeDetectorMaker.Erd;
+  private resizeDetector: ResizeObserver;
 
   private hooks: {
     init: AsyncSeriesHook;
@@ -125,6 +124,13 @@ export default class Scene extends EventEmitter implements ISceneService {
   }
 
   public init(sceneConfig: ISceneConfig) {
+    // 防止重复初始化：如果已经在初始化中或已初始化完成，跳过重复注册 hooks
+    if (this.inited || this.rendering) {
+      return;
+    }
+    // 允许 destroy 后重新初始化
+    this.destroyed = false;
+
     // 设置场景配置项
     this.configService.setSceneConfig(this.id, sceneConfig);
     // 初始化 ShaderModule
@@ -139,18 +145,35 @@ export default class Scene extends EventEmitter implements ISceneService {
      * 初始化底图
      */
     this.hooks.init.tapPromise('initMap', async () => {
+      // 在异步钩子执行前检查是否已被销毁（React StrictMode 等场景）
+      if (this.destroyed) {
+        return;
+      }
       this.debugService.log('map.mapInitStart', {
         type: this.map.version,
       });
       // 等待首次相机同步
-      await new Promise<void>((resolve) => {
+      await new Promise<void>((resolve, reject) => {
         this.map.onCameraChanged((viewport: IViewport) => {
+          // 在回调中检查 destroyed 状态，避免 destroy 后继续执行
+          if (this.destroyed) {
+            return;
+          }
           this.cameraService.init();
           this.cameraService.update(viewport);
           resolve();
         });
-        this.map.init();
+        const initResult = this.map.init() as Promise<void> | void;
+        // init() 实际返回 Promise<void>，需要捕获异步错误避免 Promise 挂死
+        if (typeof (initResult as any)?.catch === 'function') {
+          (initResult as Promise<void>).catch(reject);
+        }
       });
+
+      // 异步操作完成后再次检查销毁状态，避免 destroy 后继续初始化
+      if (this.destroyed) {
+        return;
+      }
 
       // 重新绑定非首次相机更新事件
       this.map.onCameraChanged(this.handleMapCameraChanged);
@@ -162,12 +185,19 @@ export default class Scene extends EventEmitter implements ISceneService {
       // 地图初始化之后 才能初始化 container 上的交互
       this.interactionService.init();
       this.interactionService.on(InteractionEvent.Drag, this.addSceneEvent.bind(this));
+      this.interactionService.on(InteractionEvent.Hover, this.addSceneEvent.bind(this));
+      this.interactionService.on(InteractionEvent.Click, this.addSceneEvent.bind(this));
+      this.interactionService.on(InteractionEvent.DblClick, this.addSceneEvent.bind(this));
     });
 
     /**
      * 初始化渲染引擎
      */
     this.hooks.init.tapPromise('initRenderer', async () => {
+      // 在异步钩子执行前检查是否已被销毁（React StrictMode 等场景）
+      if (this.destroyed) {
+        return;
+      }
       // https://github.com/antvis/L7/issues/1459#issuecomment-1709481920 不确定我什么会报错先兼容一下
       const renderContainer = this.map?.getOverlayContainer() || undefined;
       if (renderContainer) {
@@ -191,18 +221,27 @@ export default class Scene extends EventEmitter implements ISceneService {
           this.configService.getSceneConfig(this.id) as IRenderConfig,
           sceneConfig.gl,
         );
+
+        // 渲染器初始化完成后再次检查销毁状态，避免 destroy 后继续创建资源
+        if (this.destroyed) {
+          // 清理已创建的 DOM 和渲染器资源
+          this.$container?.removeChild(this.canvas);
+          // @ts-ignore
+          this.canvas = null;
+          this.rendererService.destroy();
+          return;
+        }
+
         this.registerContextLost();
         this.initContainer();
 
-        this.resizeDetector = elementResizeDetectorMaker({
-          strategy: 'scroll', //<- For ultra performance.
-        });
-        this.resizeDetector.listenTo(this.$container as HTMLDivElement, this.handleWindowResized);
+        this.resizeDetector = new ResizeObserver(this.handleWindowResized);
+        this.resizeDetector.observe(this.$container as HTMLDivElement);
 
         if (window.matchMedia) {
           window
             .matchMedia('screen and (-webkit-min-device-pixel-ratio: 1.5)')
-            ?.addListener(this.handleWindowResized.bind('screen'));
+            ?.addListener(this.handleDPRChange);
         }
       } else {
         console.error('容器 id 不存在');
@@ -239,8 +278,9 @@ export default class Scene extends EventEmitter implements ISceneService {
       // 还未初始化完成需要等待
 
       await this.hooks.init.promise(); // 初始化地图和渲染
+      // 如果在 init 过程中被 destroy，直接返回，避免后续操作
       if (this.destroyed) {
-        this.destroy();
+        return;
       }
       // FIXME: 初始化 marker 容器，可以放到 map 初始化方法中？
       await this.layerService.initLayers();
@@ -308,9 +348,31 @@ export default class Scene extends EventEmitter implements ISceneService {
   public destroy() {
     if (!this.inited) {
       this.destroyed = true;
+      // 即使未完成初始化也重置 hooks，防止 tasks 累积
+      this.hooks.init = new AsyncSeriesHook();
+      // 清理图标和字体监听器，防止内存泄漏
+      this.iconService.destroy();
+      this.fontService.destroy();
+      // 清理 controlService 创建的 DOM（l7-control-container 在 Scene 构造函数中同步创建）
+      this.controlService.destroy();
+      this.markerService.destroy();
+      this.popupService.destroy();
+      this.removeAllListeners();
+      // 异步初始化可能已部分完成，需要清理地图实例和 DOM
+      if (this.map) {
+        this.map.destroy();
+      }
+      // 清理可能已创建的渲染容器和 canvas
+      if (this.$container) {
+        if (this.canvas && this.$container.contains(this.canvas)) {
+          this.$container.removeChild(this.canvas);
+        }
+        this.$container?.parentNode?.removeChild(this.$container);
+      }
+      this.emit('destroy');
       return;
     }
-    this.resizeDetector.removeListener(this.$container as HTMLDivElement, this.handleWindowResized);
+    this.resizeDetector.disconnect();
 
     this.pickingService.destroy();
     this.layerService.destroy();
@@ -325,6 +387,10 @@ export default class Scene extends EventEmitter implements ISceneService {
 
     this.removeAllListeners();
     this.inited = false;
+    this.loaded = false;
+    this.destroyed = true;
+    // 重置 hooks，防止 destroy 后重新 init 时 hooks 中的 tasks 累积
+    this.hooks.init = new AsyncSeriesHook();
 
     this.map.destroy();
     setTimeout(() => {
@@ -340,7 +406,7 @@ export default class Scene extends EventEmitter implements ISceneService {
     this.emit('destroy');
   }
 
-  private handleWindowResized = () => {
+  private handleWindowResized = (_entries: ResizeObserverEntry[]) => {
     this.emit('resize');
     // @ts-check
     if (this.$container) {
@@ -352,6 +418,12 @@ export default class Scene extends EventEmitter implements ISceneService {
       this.render();
     }
   };
+
+  private handleDPRChange = () => {
+    // DPR 变化时触发重新渲染
+    this.handleWindowResized([]);
+  };
+
   private initContainer() {
     const pixelRatio = DOM.DPR;
     const w = this.$container?.clientWidth || 400;

@@ -18,6 +18,7 @@ const GaodeTokenScript =
       ];
 
 export default defineConfig({
+  plugins: ['./plugin-redirect.ts'],
   locales: [
     { id: 'zh', name: '中文' },
     { id: 'en', name: 'English' },
@@ -40,6 +41,9 @@ export default defineConfig({
   title: 'AntV L7 地理空间数据可视化引擎',
   themeConfig: {
     title: 'L7',
+    metas: {
+      title: 'L7',
+    },
     isAntVSite: false,
     footerTheme: 'light', // 白色 底部主题
     // internalSite: {
@@ -52,15 +56,11 @@ export default defineConfig({
     description: 'Large-scale WebGL-powered Geospatial data visualization analysis framework',
     siteUrl: 'https://l7.antv.antgroup.com/',
     githubUrl: 'https://github.com/antvis/L7',
-    relativePath: 'packages/site',
+    relativePath: 'site',
     keywords:
       'l7, L7, antv/l7, 地理, 空间可视化, Webgl, webgl, 地图, webgis, 3d, GIS, gis, Mapbox, deckgl, g2, g6, antv,',
     showChartResize: true, // 是否在demo页展示图表视图切换
     showAPIDoc: false, // 是否在demo页展示API文档
-    petercat: {
-      show: true,
-      token: 'a1dbc546-2ec1-4aba-853f-56aaf511e23d',
-    },
     detail: {
       engine: {
         zh: 'L7',
@@ -109,32 +109,6 @@ export default defineConfig({
       ],
     },
     msfu: false,
-    news: [
-      {
-        type: {
-          zh: '推荐',
-          en: 'News',
-        },
-        title: {
-          zh: '地图站点导航工具',
-          en: 'DipperMap',
-        },
-        date: '2023.12.01',
-        link: 'https://nav.dippermap.com/',
-      },
-      {
-        type: {
-          zh: '推荐',
-          en: 'News',
-        },
-        title: {
-          zh: 'L7VP 地理数据分析工具',
-          en: 'L7VP',
-        },
-        date: '2023.07.07',
-        link: 'https://li.antv.antgroup.com/',
-      },
-    ],
     features: [
       {
         icon: 'https://gw.alipayobjects.com/zos/basement_prod/ca2168d1-ae50-4929-8738-c6df62231de3.svg',
@@ -704,14 +678,13 @@ export default defineConfig({
     ],
   ],
   links: [],
-  scripts: [
-    'https://api.map.baidu.com/api?type=webgl&v=1.0&ak=zLhopYPPERGtpGOgimcdKcCimGRyyIsh',
-    ...GaodeTokenScript,
-  ],
+  scripts: [...GaodeTokenScript],
   analytics: {
     baidu: 'cde34c32ff1edfd4f933bfb44ae0e9f3',
   },
   alias: {
+    // map @ to site root so docs can import with @/...
+    '@': path.resolve(__dirname),
     '@antv/l7': path.resolve(__dirname, '../packages/l7/src'),
     '@antv/l7-core': path.resolve(__dirname, '../packages/core/src'),
     '@antv/l7-component': path.resolve(__dirname, '../packages/component/src'),
@@ -724,4 +697,9 @@ export default defineConfig({
     '@antv/l7-source': path.resolve(__dirname, '../packages/source/src'),
     '@antv/l7-utils': path.resolve(__dirname, '../packages/utils/src'),
   },
+  // redirects config is not supported by dumi v2.4.x
+  // redirects: {
+  //   '/api': '/api/scene',
+  //   '/en/api': '/en/api/scene',
+  // },
 });

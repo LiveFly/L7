@@ -9,7 +9,7 @@ import type {
   Point,
 } from '@antv/l7-core';
 import { MapServiceEvent } from '@antv/l7-core';
-import { MercatorCoordinate } from '@antv/l7-map';
+import { MapMouseEvent, MercatorCoordinate } from '@antv/l7-map';
 import { DOM } from '@antv/l7-utils';
 import { mat4, vec3 } from 'gl-matrix';
 import Viewport from '../lib/web-mercator-viewport';
@@ -17,8 +17,7 @@ import BaseMapService from '../utils/BaseMapService';
 import './logo.css';
 import TMapLoader from './maploader';
 
-const TMAP_API_KEY: string = 'OB4BZ-D4W3U-B7VVO-4PJWW-6TKDJ-WPB77';
-const BMAP_VERSION: string = '1.exp';
+const TMAP_VERSION: string = '1.exp';
 
 const EventMap: {
   [key: string]: any;
@@ -70,8 +69,8 @@ export default class TMapService extends BaseMapService<TMap.Map> {
       id,
       mapInstance,
       center = [121.30654632240122, 31.25744185633306],
-      token = TMAP_API_KEY,
-      version = BMAP_VERSION,
+      token,
+      version = TMAP_VERSION,
       libraries = [],
       minZoom = 3,
       maxZoom = 18,
@@ -83,8 +82,14 @@ export default class TMapService extends BaseMapService<TMap.Map> {
     } = this.config;
 
     if (!(window.TMap || mapInstance)) {
+      if (!token) {
+        console.warn(
+          `%c${this.configService.getSceneWarninfo('MapToken')}!`,
+          'color: #873bf4;font-weigh:900;font-size: 16px;',
+        );
+      }
       await TMapLoader.load({
-        key: token,
+        key: token || '',
         version,
         libraries,
       });
@@ -144,13 +149,23 @@ export default class TMapService extends BaseMapService<TMap.Map> {
     this.map.on('rotate', this.handleCameraChanged);
     this.map.on('pitch', this.handleCameraChanged);
     this.map.on('zoom', this.handleCameraChanged);
+    this.map.on('resize', this.handleCameraChanged);
 
     // Trigger camera change after init
     this.handleCameraChanged();
+    this.bindPendingEvents();
   }
 
   public destroy(): void {
-    this.map.destroy();
+    // map 实例可能尚未初始化完成（如 React StrictMode 双重渲染场景下提前 destroy）
+    if (this.map) {
+      this.map.destroy();
+    }
+
+    // 清理 marker container（如果存在）
+    if (this.markerContainer && this.markerContainer.parentNode) {
+      this.markerContainer.parentNode.removeChild(this.markerContainer);
+    }
   }
 
   public onCameraChanged(callback: (viewport: IViewport) => void): void {
@@ -173,6 +188,12 @@ export default class TMapService extends BaseMapService<TMap.Map> {
     if (MapServiceEvent.indexOf(type) !== -1) {
       this.eventEmitter.on(type, handle);
     } else {
+      if (!this.map) {
+        // 地图尚未初始化，缓存事件，init 完成后重放
+        this.pendingHandlers.push({ type, handler: handle });
+        return;
+      }
+
       const onProxy = (eventName: string) => {
         let cbProxyMap = this.evtCbProxyMap.get(eventName);
 
@@ -192,6 +213,11 @@ export default class TMapService extends BaseMapService<TMap.Map> {
         };
 
         cbProxyMap.set(handle, handleProxy);
+        if (eventName === 'mouseover') {
+          this.map.getContainer().addEventListener('mouseover', (e) => {
+            this.map.emit(e.type, new MapMouseEvent(e.type, this.map, e));
+          });
+        }
         this.map.on(eventName, handleProxy);
       };
 
@@ -208,6 +234,14 @@ export default class TMapService extends BaseMapService<TMap.Map> {
   public off(type: string, handle: (...args: any[]) => void): void {
     if (MapServiceEvent.indexOf(type) !== -1) {
       this.eventEmitter.off(type, handle);
+      return;
+    }
+
+    if (!this.map) {
+      // 地图尚未初始化，从缓存中移除
+      this.pendingHandlers = this.pendingHandlers.filter(
+        (item) => !(item.type === type && item.handler === handle),
+      );
       return;
     }
 

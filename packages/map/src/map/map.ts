@@ -35,6 +35,16 @@ import type { TaskID } from './util/task_queue';
  */
 export type MapOptions = {
   /**
+   * The MapType of the map.
+   * @defaultValue DEFAUlTMAP
+   */
+  version?: string;
+  /**
+   * The map size for SIMPLE map.
+   * @defaultValue 10000
+   */
+  mapSize?: number;
+  /**
    * If `false`, no mouse, touch, or keyboard listeners will be attached to the map, so it will not respond to interaction.
    * @defaultValue true
    */
@@ -266,6 +276,9 @@ export class Map extends Camera {
   _removed: boolean;
   _clickTolerance: number;
 
+  version: string;
+  mapSize: number;
+
   /**
    * The map's {@link ScrollZoomHandler}, which implements zooming in and out with a scroll wheel or trackpad.
    * Find more details and examples using `scrollZoom` in the {@link ScrollZoomHandler} section.
@@ -362,6 +375,8 @@ export class Map extends Camera {
     this._bearingSnap = resolvedOptions.bearingSnap!;
     this._fadeDuration = resolvedOptions.fadeDuration!;
     this._clickTolerance = resolvedOptions.clickTolerance!;
+    this.version = options.version;
+    this.mapSize = options.mapSize;
 
     if (typeof resolvedOptions.container === 'string') {
       this._container = document.getElementById(resolvedOptions.container)!;
@@ -809,7 +824,7 @@ export class Map extends Camera {
    * @param type - The type of the event.
    * @param listener - The listener callback.
    */
-  on<T extends keyof MapEventType>(type: T, listener: (ev: MapEventType[T] & Object) => void): this;
+  on<T extends keyof MapEventType>(type: T, listener: (ev: MapEventType[T] & object) => void): this;
   /**
    * Overload of the `on` method that allows to listen to events without specifying a layer.
    * @event
@@ -829,7 +844,7 @@ export class Map extends Camera {
    */
   once<T extends keyof MapEventType>(
     type: T,
-    listener?: (ev: MapEventType[T] & Object) => void,
+    listener?: (ev: MapEventType[T] & object) => void,
   ): this | Promise<any>;
   /**
    * Overload of the `once` method that allows to listen to events without specifying a layer.
@@ -850,7 +865,7 @@ export class Map extends Camera {
    */
   off<T extends keyof MapEventType>(
     type: T,
-    listener: (ev: MapEventType[T] & Object) => void,
+    listener: (ev: MapEventType[T] & object) => void,
   ): this;
   /**
    * Overload of the `off` method that allows to listen to events without specifying a layer.

@@ -1,5 +1,23 @@
 /**
- * MapboxService
+ * BaseMapService - 地图服务抽象基类
+ *
+ * @deprecated 请使用 `BaseMap` (lib/base-map.ts) 替代。
+ * 新的 BaseMap 类提供了更清晰的抽象接口设计。
+ *
+ * 迁移指南:
+ * 1. 将 `extends BaseMapService<T>` 改为 `extends BaseMap<T>`
+ * 2. 实现 BaseMap 中的抽象方法
+ * 3. 使用 `handleCameraChanged` 替代直接的相机变化处理
+ *
+ * @example
+ * ```ts
+ * // 旧写法
+ * export default class MyMapService extends BaseMapService<MyMapType> { ... }
+ *
+ * // 新写法
+ * import BaseMap from '../lib/base-map';
+ * export default class MyMapService extends BaseMap<MyMapType> { ... }
+ * ```
  */
 import type {
   Bounds,
@@ -18,11 +36,9 @@ import type {
   MapStyleName,
 } from '@antv/l7-core';
 import { CoordinateSystem, MapServiceEvent } from '@antv/l7-core';
-import type { Map } from '@antv/l7-map';
+import { type ISimpleMapCoord, type Map, SimpleMapCoord } from '@antv/l7-map';
 import { DOM } from '@antv/l7-utils';
 import { EventEmitter } from 'eventemitter3';
-import type { ISimpleMapCoord } from './simpleMapCoord';
-import { SimpleMapCoord } from './simpleMapCoord';
 import { MapTheme } from './theme';
 const EventMap: {
   [key: string]: any;
@@ -50,6 +66,16 @@ export default abstract class BaseMapService<T> implements IMapService<Map & T> 
   protected readonly coordinateSystemService: ICoordinateSystemService;
 
   protected eventEmitter: any;
+  // map event proxy map to keep track of original handler -> proxy mapping
+  protected evtCbProxyMap: globalThis.Map<
+    string,
+    globalThis.Map<(...args: any[]) => void, (...args: any[]) => void>
+  > = new globalThis.Map();
+
+  /**
+   * 在地图实例初始化之前缓存的事件处理器，init 完成后自动重放绑定
+   */
+  protected pendingHandlers: Array<{ type: string; handler: (...args: any[]) => void }> = [];
 
   constructor(container: L7Container) {
     this.config = container.mapConfig;
@@ -83,18 +109,63 @@ export default abstract class BaseMapService<T> implements IMapService<Map & T> 
     return undefined;
   }
 
-  //  map event
+  // map event
   public on(type: string, handle: (...args: any[]) => void): void {
     if (MapServiceEvent.indexOf(type) !== -1) {
       this.eventEmitter.on(type, handle);
-    } else {
-      // 统一事件名称
-      this.map.on(EventMap[type] || type, handle);
+      return;
+    }
+    if (!this.map) {
+      // 地图尚未初始化，缓存事件，init 完成后重放
+      this.pendingHandlers.push({ type, handler: handle });
+      return;
+    }
+    const mapped = EventMap[type] || type;
+    // keep a proxy so we can remove the exact handler when off is called
+    let mapForType = this.evtCbProxyMap.get(mapped);
+    if (!mapForType) {
+      mapForType = new globalThis.Map();
+      this.evtCbProxyMap.set(mapped, mapForType);
+    }
+    if (!mapForType.has(handle)) {
+      const proxy = (...args: any[]) => {
+        try {
+          handle(...args);
+        } catch (e) {
+          // swallow handler errors to avoid breaking the map's internal emitter
+          // but log to console for debugging
+          console.error('Error in map event handler', e);
+        }
+      };
+      mapForType.set(handle, proxy);
+      this.map.on(mapped, proxy);
     }
   }
+
   public off(type: string, handle: (...args: any[]) => void): void {
-    this.map.off(EventMap[type] || type, handle);
-    this.eventEmitter.off(type, handle);
+    if (MapServiceEvent.indexOf(type) !== -1) {
+      this.eventEmitter.off(type, handle);
+      return;
+    }
+    if (!this.map) {
+      // 地图尚未初始化，从缓存中移除
+      this.pendingHandlers = this.pendingHandlers.filter(
+        (item) => !(item.type === type && item.handler === handle),
+      );
+      return;
+    }
+    const mapped = EventMap[type] || type;
+    const mapForType = this.evtCbProxyMap.get(mapped);
+    if (mapForType) {
+      const proxy = mapForType.get(handle);
+      if (proxy) {
+        this.map.off(mapped, proxy);
+        mapForType.delete(handle);
+      }
+      if ((mapForType as any).size === 0) {
+        this.evtCbProxyMap.delete(mapped);
+      }
+    }
   }
 
   public getContainer(): HTMLElement | null {
@@ -233,7 +304,6 @@ export default abstract class BaseMapService<T> implements IMapService<Map & T> 
     this.map?.setStyle(this.getMapStyleValue(style));
   }
 
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   public meterToCoord(center: [number, number], outer: [number, number]) {
     return 1.0;
   }
@@ -273,7 +343,7 @@ export default abstract class BaseMapService<T> implements IMapService<Map & T> 
         return styleUrl?.replace(/\/\w+$/, '').replace(/sprites/, 'styles');
       }
       return styleUrl;
-    } catch (e) {
+    } catch {
       return '';
     }
   }
@@ -287,6 +357,19 @@ export default abstract class BaseMapService<T> implements IMapService<Map & T> 
   }
 
   public abstract init(): Promise<void>;
+
+  /**
+   * 地图实例初始化完成后，重放缓存的事件绑定
+   * 子类在 init() 末尾应调用此方法
+   */
+  protected bindPendingEvents(): void {
+    if (this.pendingHandlers.length === 0) return;
+    const handlers = this.pendingHandlers.slice();
+    this.pendingHandlers = [];
+    handlers.forEach(({ type, handler }) => {
+      this.on(type, handler);
+    });
+  }
 
   public destroy() {
     this.eventEmitter.removeAllListeners();
@@ -319,7 +402,6 @@ export default abstract class BaseMapService<T> implements IMapService<Map & T> 
     this.cameraChangedCallback = callback;
   }
 
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   protected handleCameraChanged = (e?: any) => {
     const { lat, lng } = this.map.getCenter();
     // Tip: 统一触发地图变化事件

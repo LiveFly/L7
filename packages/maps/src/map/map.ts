@@ -1,4 +1,3 @@
-/* eslint-disable @typescript-eslint/no-unused-vars */
 /**
  * MapboxService
  */
@@ -92,6 +91,8 @@ export default class DefaultMapService extends BaseMapService<Map> {
       this.map = new Map({
         container: this.$mapContainer,
         bearing: rotation,
+        version: version,
+        mapSize: mapSize,
         ...rest,
       });
     }
@@ -109,6 +110,7 @@ export default class DefaultMapService extends BaseMapService<Map> {
       this.handleCameraChanged();
     }, 100);
     this.handleCameraChanged();
+    this.bindPendingEvents();
   }
 
   protected creatMapContainer(id: string | HTMLDivElement) {
@@ -129,6 +131,13 @@ export default class DefaultMapService extends BaseMapService<Map> {
 
   public exportMap(type: 'jpg' | 'png'): string {
     return '';
+  }
+
+  public setBgColor(color: string) {
+    this.bgColor = color;
+    if (this.$mapContainer) {
+      this.$mapContainer.style.backgroundColor = color;
+    }
   }
 
   public setMapStyle(style: any): void {}

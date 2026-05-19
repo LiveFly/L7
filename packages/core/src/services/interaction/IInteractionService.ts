@@ -1,18 +1,24 @@
 import type { ILngLat } from '../map/IMapService';
+
 export enum InteractionEvent {
   Hover = 'hover',
   Click = 'click',
+  DblClick = 'dblclick',
   Select = 'select',
   Active = 'active',
   Drag = 'drag',
+  Press = 'press',
 }
+
 export interface IInteractionTarget {
   x: number;
   y: number;
+  /** pixel 兼容 l7-draw 等库的事件格式 */
+  pixel?: { x: number; y: number };
   lngLat: ILngLat;
   type: string;
   featureId?: number;
-  target: MouseEvent | TouchEvent;
+  target: MouseEvent | TouchEvent | PointerEvent;
 }
 
 export interface IInteractionService {

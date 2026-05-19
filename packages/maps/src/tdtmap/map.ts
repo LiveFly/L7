@@ -205,10 +205,19 @@ export default class TdtMapService extends BaseMapService<any> {
     //对应leaflet中的zoomanim
     this.map.on('Ge', this.zoomStartUpdate, this);
     this.map.on('resize', this.resize, this);
+    this.bindPendingEvents();
   }
 
   public destroy(): void {
-    return;
+    // map 实例可能尚未初始化完成（如 React StrictMode 双重渲染场景下提前 destroy）
+    if (this.map) {
+      this.map.remove();
+    }
+
+    // 清理 marker container（如果存在）
+    if (this.markerContainer && this.markerContainer.parentNode) {
+      this.markerContainer.parentNode.removeChild(this.markerContainer);
+    }
   }
 
   // MapEvent
@@ -216,6 +225,12 @@ export default class TdtMapService extends BaseMapService<any> {
     if (MapServiceEvent.indexOf(type) !== -1) {
       this.eventEmitter.on(type, handle);
     } else {
+      if (!this.map) {
+        // 地图尚未初始化，缓存事件，init 完成后重放
+        this.pendingHandlers.push({ type, handler: handle });
+        return;
+      }
+
       const onProxy = (eventName: string) => {
         let cbProxyMap = this.evtCbProxyMap.get(eventName);
 
@@ -255,6 +270,14 @@ export default class TdtMapService extends BaseMapService<any> {
       return;
     }
 
+    if (!this.map) {
+      // 地图尚未初始化，从缓存中移除
+      this.pendingHandlers = this.pendingHandlers.filter(
+        (item) => !(item.type === type && item.handler === handle),
+      );
+      return;
+    }
+
     const offProxy = (eventName: string) => {
       const handleProxy = this.evtCbProxyMap.get(type)?.get(handle);
       if (!handleProxy) {
@@ -272,7 +295,7 @@ export default class TdtMapService extends BaseMapService<any> {
       offProxy(EventMap[type] || type);
     }
   }
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+
   public once(type: string, handler: (...args: any[]) => void): void {
     throw new Error('Method not implemented.');
   }

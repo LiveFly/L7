@@ -1,5 +1,45 @@
 # Change Log
 
+## 2.25.9
+
+### Patch Changes
+
+- fix: revert to version 2.25.4 and fix text rendering issue
+
+## 2.25.4
+
+## 2.23.3-beta.3
+
+## 2.23.3-beta.2
+
+## 2.23.3-beta.1
+
+### Patch Changes
+
+- 版本更新
+
+## 2.23.3-beta.0
+
+### Patch Changes
+
+- [`8248e26`](https://github.com/antvis/L7/commit/8248e264c6cad611547c7f9730540ab0729115ac) Thanks [@lzxue](https://github.com/lzxue)! - patch 版本
+
+## 2.23.2
+
+### Patch Changes
+
+- [`a3e9a44`](https://github.com/antvis/L7/commit/a3e9a440e43030a297ee8dd32aabb32c10624e7d) Thanks [@lzxue](https://github.com/lzxue)! - rename source
+
+## 2.23.1
+
+### Patch Changes
+
+- [`7932838`](https://github.com/antvis/L7/commit/79328384d8b1deb547ff2422aaa4366201dfe9b2) Thanks [@lzxue](https://github.com/lzxue)! - 更新demo
+
+- [`4f690b8`](https://github.com/antvis/L7/commit/4f690b837a322bc9923baf2b387ea43d37ba1e5d) Thanks [@lzxue](https://github.com/lzxue)! - 移动端事件
+
+## 2.22.6
+
 ## 2.22.5
 
 ### Patch Changes

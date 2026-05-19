@@ -1,0 +1,33 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(git add:*)",
+      "Bash(git merge:*)",
+      "Bash(du:*)",
+      "Bash(find:*)",
+      "Bash(grep:*)",
+      "Bash(sort:*)",
+      "Bash(pnpm install)",
+      "Bash(wc:*)",
+      "Bash(yarn run test)",
+      "Bash(node -e:*)",
+      "Bash(npm rebuild)",
+      "Bash(pnpm rebuild gl:*)",
+      "Bash(node-gyp rebuild:*)",
+      "Bash(npx jest:*)",
+      "Bash(git checkout:*)",
+      "Bash(yarn run test:unit:*)",
+      "Bash(yarn run test:integration:*)",
+      "Bash(pnpm list:*)",
+      "Bash(pnpm ls webpack style-loader css-loader less-loader postcss-loader)",
+      "Bash(ls:*)",
+      "Bash(cat:*)",
+      "Bash(NODE_ENV=production pnpm:*)",
+      "Read(//tmp/**)",
+      "Edit(~/.claude/skills/vision-story/**)",
+      "Bash(node ~/.claude/skills/release-l7/index.ts release 2.25.3)",
+      "WebFetch(domain:github.com)",
+      "Bash(.changeset/scale-fix.md:*)"
+    ]
+  }
+}

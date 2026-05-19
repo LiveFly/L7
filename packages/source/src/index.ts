@@ -1,3 +1,4 @@
+import Source from './base-source';
 import { registerParser, registerTransform } from './factory';
 import csv from './parser/csv';
 import geojson from './parser/geojson';
@@ -12,7 +13,6 @@ import ndi from './parser/raster/ndi';
 import rgb from './parser/raster/rgb';
 import rasterRgb from './parser/rasterRgb';
 import testTile from './parser/testTile';
-import Source from './source';
 import { cluster } from './transform/cluster';
 import { filter } from './transform/filter';
 import { aggregatorToGrid } from './transform/grid';
@@ -22,6 +22,7 @@ import { map } from './transform/map';
 export { getParser, getTransform, registerParser, registerTransform } from './factory';
 export * from './interface';
 export * from './source/index';
+export * from './utils/relative-coordinates';
 export { rasterDataTypes };
 
 registerParser('rasterTile', rasterTile);

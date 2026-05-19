@@ -8,7 +8,7 @@ type CaseSceneOptions = TestCaseOptions & {
 };
 
 export const CaseScene = (options: CaseSceneOptions) => {
-  const { map: basemap, animate, mapConfig } = options;
+  const { map: basemap, animate, mapConfig, renderer } = options;
 
   const isMapbox = ['MapLibre', 'Mapbox'].includes(basemap);
 
@@ -22,19 +22,25 @@ export const CaseScene = (options: CaseSceneOptions) => {
     rotation: 0,
     pitch: 0,
     zoom: 16,
+    WebGLParams: {
+      preserveDrawingBuffer: true,
+    },
     ...mapConfig,
   });
 
   const scene = new Scene({
     ...options,
     map,
+    renderer: renderer || 'regl', // 默认使用 regl，Three.js demo 需要传入 'device'
     shaderCompilerPath: '/glsl_wgsl_compiler_bg.wasm',
-    logoVisible: false,
+    // logoVisible: false,
   });
 
   return new Promise<Scene>((resolve) => {
     scene.on('loaded', () => {
-      animate && scene.startAnimate();
+      if (animate) {
+        scene.startAnimate();
+      }
       resolve(scene);
     });
   });
